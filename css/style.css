@@ -1,0 +1,820 @@
+/* =========================================================
+   PLN · MATERIAL — STYLE SHEET
+   ========================================================= */
+
+:root {
+  --navy: #0b2b4a;
+  --navy-dark: #082038;
+  --blue: #14828a;
+  --blue-light: #d7f3f5;
+  --blue-accent: #5fcdd9;
+  --gold: #ffd966;
+  --gold-dark: #f0c419;
+  --text-dark: #1f4460;
+  --success: #1e8e5a;
+  --danger: #d64545;
+  --header-grad-start: #2a5267;
+  --header-grad-mid: #14828a;
+  --header-grad-end: #5fcdd9;
+  --radius: 16px;
+  --radius-lg: 28px;
+  --shadow: 0 6px 20px rgba(11, 43, 74, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Poppins", sans-serif;
+  background: #ffffff;
+  color: var(--text-dark);
+}
+
+a {
+  color: inherit;
+}
+
+/* =========================================================
+   HEADER — full width, langsung di atas, tanpa bingkai
+   ========================================================= */
+.site-header {
+  width: 100%;
+  background: linear-gradient(
+    120deg,
+    var(--header-grad-start),
+    var(--header-grad-mid) 55%,
+    var(--header-grad-end)
+  );
+  padding: 0.9rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+  position: sticky;
+  top: 0;
+  z-index: 500;
+}
+
+.logo-area {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.15rem;
+  white-space: nowrap;
+}
+.logo-area img {
+  height: 46px;
+  width: auto;
+  max-width: 70px;
+  object-fit: contain;
+}
+
+.nav-links {
+  display: flex;
+  gap: 1.6rem;
+  flex-wrap: wrap;
+}
+.nav-links a {
+  color: #cfe0ee;
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.92rem;
+  padding-bottom: 4px;
+  border-bottom: 2px solid transparent;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+.nav-links a:hover,
+.nav-links a.active {
+  color: var(--gold);
+  border-bottom-color: var(--gold);
+}
+
+.auth-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.btn {
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+  font-weight: 600;
+}
+
+.btn-outline {
+  background: transparent;
+  border: 1.5px solid rgba(255, 255, 255, 0.6);
+  color: #fff;
+  padding: 0.5rem 1.1rem;
+  border-radius: 30px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-outline:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.btn-primary {
+  background: var(--gold);
+  color: var(--navy-dark);
+  padding: 0.5rem 1.3rem;
+  border-radius: 30px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  border: none;
+  transition:
+    transform 0.15s,
+    background 0.15s;
+}
+.btn-primary:hover {
+  background: var(--gold-dark);
+  transform: translateY(-1px);
+}
+
+.user-info {
+  color: #fff;
+  font-size: 0.88rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* =========================================================
+   HERO BANNER — di bawah headbar
+   ========================================================= */
+.hero-banner {
+  position: relative;
+  width: 100%;
+  height: 300px;
+  overflow: hidden;
+  background: var(--navy-dark);
+}
+.hero-banner img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.hero-banner .hero-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 3rem;
+  background: linear-gradient(
+    90deg,
+    rgba(8, 32, 56, 0.75) 0%,
+    rgba(8, 32, 56, 0.25) 60%,
+    transparent 100%
+  );
+}
+.hero-overlay .hero-tag {
+  display: inline-block;
+  background: var(--gold);
+  color: var(--navy-dark);
+  font-weight: 700;
+  font-size: 0.75rem;
+  padding: 0.3rem 0.8rem;
+  border-radius: 20px;
+  margin-bottom: 0.8rem;
+  width: fit-content;
+}
+.hero-overlay h1 {
+  color: #fff;
+  font-size: 2.4rem;
+  font-weight: 700;
+  margin: 0 0 0.4rem;
+  max-width: 650px;
+}
+.hero-overlay p {
+  color: #dbe9f5;
+  font-size: 1rem;
+  max-width: 520px;
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .hero-banner {
+    height: 220px;
+  }
+  .hero-overlay h1 {
+    font-size: 1.5rem;
+  }
+  .hero-overlay {
+    padding: 0 1.3rem;
+  }
+}
+
+/* =========================================================
+   MAIN CONTENT WRAPPER
+   ========================================================= */
+.app-wrapper {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.8rem 2rem 2.5rem;
+}
+
+@media (max-width: 720px) {
+  .app-wrapper {
+    padding: 1.2rem 1rem 2rem;
+  }
+}
+
+/* Alerts */
+.alert-success,
+.alert-danger {
+  padding: 0.9rem 1.2rem;
+  border-radius: 12px;
+  margin-bottom: 1.2rem;
+  font-size: 0.9rem;
+}
+.alert-success {
+  background: #e3f7ec;
+  color: var(--success);
+  border: 1px solid #b7e6cb;
+}
+.alert-danger {
+  background: #fdeaea;
+  color: var(--danger);
+  border: 1px solid #f6c2c2;
+}
+
+/* Cards */
+.card {
+  background: #fff;
+  border-radius: var(--radius);
+  padding: 1.6rem;
+  box-shadow: var(--shadow);
+  border: 1px solid #eef2f6;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.2rem;
+  margin-top: 1.2rem;
+}
+.card-grid .card h3 {
+  color: var(--navy);
+  margin-top: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 1px solid #eef2f6;
+  padding-bottom: 0.6rem;
+}
+
+.hero-card {
+  background: linear-gradient(120deg, var(--blue-light), var(--blue-accent));
+  border-radius: 40px;
+  padding: 2.5rem 2rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Buttons di dalam konten */
+.btn-success,
+.btn-info,
+.btn-warning,
+.btn-danger {
+  border: none;
+  border-radius: 30px;
+  padding: 0.6rem 1.2rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: #fff;
+  font-family: inherit;
+}
+.btn-success {
+  background: var(--success);
+}
+.btn-info {
+  background: var(--blue);
+}
+.btn-warning {
+  background: var(--gold);
+  color: var(--navy-dark);
+}
+.btn-danger {
+  background: var(--danger);
+}
+.btn-success:hover,
+.btn-info:hover,
+.btn-warning:hover,
+.btn-danger:hover {
+  filter: brightness(1.07);
+}
+
+/* Forms */
+.form-group {
+  margin-bottom: 1rem;
+}
+.form-group label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--navy);
+  margin-bottom: 0.35rem;
+}
+.form-group input,
+.form-group select {
+  width: 100%;
+  padding: 0.65rem 0.9rem;
+  border-radius: 10px;
+  border: 1.5px solid #dbe4ec;
+  font-family: inherit;
+  font-size: 0.9rem;
+  background: #fbfdff;
+}
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+.flex-row {
+  display: flex;
+  gap: 1.2rem;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin-bottom: 1.1rem;
+}
+.flex-row:last-of-type {
+  margin-bottom: 0;
+}
+.flex-row .form-group {
+  flex: 1;
+  min-width: 200px;
+  margin-bottom: 0;
+}
+
+/* Table */
+.table-wrap {
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+thead th {
+  text-align: left;
+  background: var(--blue-light);
+  color: var(--navy);
+  padding: 0.7rem 0.9rem;
+  font-weight: 600;
+}
+tbody td {
+  padding: 0.65rem 0.9rem;
+  border-bottom: 1px solid #eef2f6;
+}
+tbody tr:hover {
+  background: #f8fbfd;
+}
+
+/* Kolom terkunci (kontak vendor, hanya admin) */
+.locked-cell {
+  color: #9aa8b5;
+  font-size: 0.82rem;
+  font-style: italic;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.text-small {
+  color: #6d859b;
+  font-size: 0.85rem;
+}
+
+.monitoring-dpb {
+  background: var(--blue-light);
+  border-radius: var(--radius-lg);
+  padding: 1.8rem;
+}
+
+/* Footer text (bukan lagi bar berbingkai biru) */
+.site-footer-text {
+  margin-top: 2.5rem;
+  border-top: 1px solid #eef2f6;
+  padding-top: 1.2rem;
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  color: var(--text-dark);
+  font-size: 0.8rem;
+}
+
+/* =========================================================
+   PAGINATION — daftar Material ("Lihat Hasil")
+   ========================================================= */
+.material-list-footer {
+  margin-top: 1.4rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+.pagination-wrap {
+  display: inline-flex;
+  border: 1px solid #dbe4ec;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+.page-btn {
+  min-width: 44px;
+  height: 44px;
+  padding: 0 0.7rem;
+  border: none;
+  border-right: 1px solid #dbe4ec;
+  background: #fff;
+  color: var(--text-dark);
+  font-weight: 600;
+  font-size: 0.9rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.page-btn:last-child {
+  border-right: none;
+}
+.page-btn:hover {
+  background: var(--blue-light);
+}
+.page-btn.active {
+  background: var(--blue);
+  color: #fff;
+}
+.page-btn.page-arrow {
+  color: var(--blue);
+  font-weight: 700;
+}
+.page-ellipsis {
+  min-width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #9aa8b5;
+  border-right: 1px solid #dbe4ec;
+  font-weight: 700;
+}
+.material-export-row {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* =========================================================
+   MODAL — Login / Register / FAQ
+   ========================================================= */
+.modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 32, 56, 0.55);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.modal.show {
+  display: flex;
+}
+
+.modal-content {
+  background: #fff;
+  border-radius: var(--radius-lg);
+  padding: 2.2rem 2rem;
+  width: 100%;
+  max-width: 420px;
+  max-height: 90vh;
+  overflow-y: auto;
+  position: relative;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  animation: modalPop 0.18s ease-out;
+}
+@keyframes modalPop {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-content .close {
+  position: absolute;
+  top: 1rem;
+  right: 1.2rem;
+  font-size: 1.4rem;
+  cursor: pointer;
+  color: #9aa8b5;
+  line-height: 1;
+}
+.modal-content .close:hover {
+  color: var(--navy);
+}
+
+.modal-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.2rem;
+}
+.modal-brand img {
+  height: 64px;
+  width: auto;
+  max-width: 90px;
+  object-fit: contain;
+}
+.modal-brand span {
+  color: var(--navy);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.modal-content h2 {
+  color: var(--navy);
+  text-align: center;
+  margin: 0 0 1.3rem;
+  font-size: 1.3rem;
+}
+
+.modal-content .btn-primary-full {
+  width: 100%;
+  background: var(--gold);
+  color: var(--navy-dark);
+  border: none;
+  padding: 0.75rem;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  margin-top: 0.4rem;
+  transition: background 0.15s;
+}
+.modal-content .btn-primary-full:hover {
+  background: var(--gold-dark);
+}
+
+.faq-link {
+  text-align: center;
+  margin-top: 0.9rem;
+  font-size: 0.83rem;
+  color: var(--blue);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+#toggleAuthText,
+#backToLoginText {
+  display: block;
+  margin-top: 0.5rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-dark);
+}
+#toggleAuthText a,
+#backToLoginText a {
+  color: var(--blue);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+#toggleAuthText a:hover,
+#backToLoginText a:hover {
+  text-decoration: underline;
+}
+
+.forgot-box {
+  background: var(--blue-light);
+  border-radius: 14px;
+  padding: 1.1rem 1.2rem;
+  font-size: 0.85rem;
+  color: var(--text-dark);
+  line-height: 1.6;
+}
+.forgot-box strong {
+  color: var(--navy);
+}
+.forgot-box i {
+  width: 18px;
+  color: var(--blue);
+}
+
+.faq-contact {
+  background: var(--blue-light);
+  border-radius: 14px;
+  padding: 1rem 1.2rem;
+  margin-top: 1rem;
+  font-size: 0.88rem;
+  line-height: 1.7;
+  color: var(--text-dark);
+}
+.faq-contact i {
+  width: 18px;
+  color: var(--navy);
+}
+
+/* =========================================================
+   ROLE BADGE (Admin / Vendor) — di header
+   ========================================================= */
+.role-badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.15rem 0.55rem;
+  border-radius: 20px;
+  margin-left: 0.4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.role-badge.role-admin {
+  background: var(--gold);
+  color: var(--navy-dark);
+}
+.role-badge.role-vendor {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+.role-badge.role-gudang2 {
+  background: #5fcdd9;
+  color: #082038;
+}
+
+/* =========================================================
+   STATUS BADGE — hasil pencarian DPB
+   ========================================================= */
+.status-badge {
+  display: inline-block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.35rem 0.9rem;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.status-badge.status-belum {
+  background: #fdeaea;
+  color: var(--danger);
+  border: 1px solid #f6c2c2;
+}
+.status-badge.status-aktif {
+  background: #fff6dd;
+  color: #9a7300;
+  border: 1px solid var(--gold);
+}
+.status-badge.status-selesai {
+  background: #e3f7ec;
+  color: var(--success);
+  border: 1px solid #b7e6cb;
+}
+.status-badge.status-pending {
+  background: #fdf1e0;
+  color: #a35b00;
+  border: 1px solid #f3c98a;
+}
+.status-badge.status-ditolak {
+  background: #f2e7f5;
+  color: #7a3b96;
+  border: 1px solid #d9b9e6;
+}
+
+/* =========================================================
+   BARIS MATERIAL DINAMIS — form pengajuan DPB
+   ========================================================= */
+.dpb-item-row {
+  background: #f8fbfd;
+  border: 1px solid #eef2f6;
+  border-radius: 14px;
+  padding: 0.9rem 1rem 0.3rem;
+  margin-bottom: 0.8rem;
+}
+
+/* =========================================================
+   BOX TTD — mengikuti layout lembar fisik (DPB / K3 / K7)
+   ========================================================= */
+.ttd-preline {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-dark);
+  margin-top: 1.2rem;
+}
+.ttd-preline-input {
+  border: none;
+  border-bottom: 1px dotted #9aa8b5;
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: var(--text-dark);
+  width: 160px;
+  padding: 0 0.2rem;
+}
+.ttd-preline-input:focus {
+  outline: none;
+  background: var(--blue-light);
+}
+.ttd-mengetahui {
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-dark);
+  margin: 0.6rem 0 0;
+}
+.ttd-box {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+  border-top: 1px dashed #dbe4ec;
+  padding-top: 1.3rem;
+}
+.ttd-box.cols-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+.ttd-box.cols-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+@media (max-width: 720px) {
+  .ttd-box.cols-3,
+  .ttd-box.cols-4 {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.ttd-col {
+  text-align: center;
+  font-size: 0.8rem;
+}
+.ttd-col .ttd-role {
+  font-weight: 600;
+  color: var(--navy);
+  display: block;
+  margin-bottom: 2.6rem;
+}
+.ttd-col input.ttd-name-input {
+  width: 100%;
+  text-align: center;
+  border: none;
+  border-top: 1px solid #9aa8b5;
+  border-radius: 0;
+  padding-top: 0.4rem;
+  font-weight: 600;
+  color: var(--text-dark);
+  font-size: 0.82rem;
+  background: transparent;
+}
+.ttd-col input.ttd-name-input:focus {
+  outline: none;
+  background: var(--blue-light);
+}
+.ttd-col .ttd-name-static {
+  border-top: 1px solid #9aa8b5;
+  padding-top: 0.4rem;
+  font-weight: 600;
+  color: var(--text-dark);
+  min-height: 1.1rem;
+}
+.ttd-save-btn {
+  margin-top: 1rem;
+  text-align: right;
+}
+
+/* =========================================================
+   CETAK — hanya dokumen bon/surat yang tampil, situs disembunyikan
+   ========================================================= */
+#printArea {
+  display: none;
+}
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printArea,
+  #printArea * {
+    visibility: visible;
+  }
+  #printArea {
+    display: block;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}
