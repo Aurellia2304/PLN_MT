@@ -52,9 +52,9 @@ $tugBig = $tugParts[0] ?? 'TUG';
   .info-line .info-colon { flex-shrink:0; width:12px; }
   .info-line .info-value { flex:1; }
   * { box-sizing:border-box; }
-  @page { size: A4; margin: 10mm; }
+  @page { size: A4 landscape; margin: 10mm; }
   body { font-family: Arial, Helvetica, sans-serif; font-size:11px; color:#000; margin:0; padding:20px; background:#ddd; }
-  .toolbar { max-width:1000px; margin:0 auto 12px; display:flex; gap:10px; }
+  .toolbar { max-width:1080px; margin:0 auto 12px; display:flex; gap:10px; }
   .toolbar button, .toolbar a {
     font-size:14px; padding:8px 18px; border-radius:30px; border:none; cursor:pointer;
     font-weight:700; text-decoration:none; display:inline-flex; align-items:center;
@@ -62,7 +62,7 @@ $tugBig = $tugParts[0] ?? 'TUG';
   .btn-print { background:#ffd966; color:#082038; }
   .btn-back { background:#eee; color:#333; }
 
-  .sheet { background:#fff; max-width:1000px; margin:0 auto; border:1px solid #333; }
+  .sheet { background:#fff; max-width:1080px; margin:0 auto; border:1px solid #333; }
   table.frame { width:100%; border-collapse:collapse; }
   table.frame td { border:1px solid #333; padding:4px 8px; vertical-align:top; }
 
@@ -85,6 +85,12 @@ $tugBig = $tugParts[0] ?? 'TUG';
 
   .kj-box { display:inline-block; border:1px solid #333; width:15px; height:15px; margin-right:2px; }
 
+  .header-section, .header-section td {
+    background-color: #E8F5E9 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
   @media print {
     body { background:#fff; padding:0; }
     .toolbar { display:none; }
@@ -101,7 +107,7 @@ $tugBig = $tugParts[0] ?? 'TUG';
 
 <div class="sheet">
 
-  <table class="frame">
+  <table class="frame header-section">
     <tr>
       <td class="tug-title" rowspan="3" style="width:13%; vertical-align:middle;"><?= htmlspecialchars($tugBig) ?></td>
       <td class="title-cell" style="width:57%;">

@@ -323,4 +323,77 @@ function getAllHistory($db, $startDate = null, $endDate = null) {
     $stmt->execute($params);
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
+
+// ---------- AUTO-GENERASI NOMOR TUG ----------
+function getNextTugNumber($db, $type) {
+    $currentYear = date('y');
+    if ($type === 'dpb') {
+        $prefix = 'TUG5MLG' . $currentYear . '-';
+        $table = 'dpb_transactions';
+    } elseif ($type === 'k3') {
+        $prefix = 'TUG10MLG' . $currentYear . '-';
+        $table = 'k3_transactions';
+    } elseif ($type === 'k7') {
+        $prefix = 'TUG5NSMLG' . $currentYear . '-';
+        $table = 'k7_transactions';
+    } else {
+        return '';
+    }
+
+    // Query untuk mengambil nomor TUG terakhir dengan prefix tahun ini
+    $query = "SELECT tug_number FROM {$table} WHERE tug_number LIKE :pattern ORDER BY tug_number DESC LIMIT 1";
+    $stmt = $db->prepare($query);
+    $stmt->execute([':pattern' => $prefix . '%']);
+    $lastTug = $stmt->fetchColumn();
+
+    if (!$lastTug) {
+        return $prefix . '0001';
+    }
+
+    // Mengambil 4 digit angka terakhir dari nomor TUG
+    $parts = explode('-', $lastTug);
+    $lastNum = (int) end($parts);
+    $nextNum = $lastNum + 1;
+    
+    return $prefix . str_pad($nextNum, 4, '0', STR_PAD_LEFT);
+}
+
+// ---------- RENDER PHP PAGINATION ----------
+function renderPhpPagination($currentPage, $totalPages, $urlParamName) {
+    if ($totalPages <= 1) return '';
+    
+    $html = '<div class="pagination-wrap" style="display:inline-flex; border:1px solid #dbe4ec; border-radius:12px; overflow:hidden; box-shadow:0 4px 12px rgba(11,43,74,0.03);">';
+    
+    // Previous Arrow
+    if ($currentPage > 1) {
+        $html .= '<a href="?' . http_build_query(array_merge($_GET, [$urlParamName => $currentPage - 1])) . '" class="page-btn page-arrow" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center;">&larr;</a>';
+    }
+    
+    // Page Numbers
+    $pages = [];
+    for ($i = 1; $i <= min(4, $totalPages); $i++) $pages[$i] = true;
+    for ($i = max(1, $totalPages - 2); $i <= $totalPages; $i++) $pages[$i] = true;
+    for ($i = max(1, $currentPage - 1); $i <= min($totalPages, $currentPage + 1); $i++) $pages[$i] = true;
+    
+    $sorted_pages = array_keys($pages);
+    sort($sorted_pages);
+    
+    $last_val = 0;
+    foreach ($sorted_pages as $p) {
+        if ($last_val > 0 && $p - $last_val > 1) {
+            $html .= '<span class="page-ellipsis" style="min-width:44px; height:44px; display:inline-flex; align-items:center; justify-content:center; background:#fff; border-right:1px solid #dbe4ec; color:#718096; font-size:0.9rem;">...</span>';
+        }
+        $activeClass = ($p === $currentPage) ? ' active' : '';
+        $html .= '<a href="?' . http_build_query(array_merge($_GET, [$urlParamName => $p])) . '" class="page-btn' . $activeClass . '" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center;">' . $p . '</a>';
+        $last_val = $p;
+    }
+    
+    // Next Arrow
+    if ($currentPage < $totalPages) {
+        $html .= '<a href="?' . http_build_query(array_merge($_GET, [$urlParamName => $currentPage + 1])) . '" class="page-btn page-arrow" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center;">&rarr;</a>';
+    }
+    
+    $html .= '</div>';
+    return $html;
+}
 ?>

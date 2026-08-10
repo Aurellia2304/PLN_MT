@@ -92,10 +92,21 @@ while (count($items) < 10) { $items[] = null; }
   .sign-role { font-weight:700; margin:0 0 34px; }
   .sign-name { border-top:1px solid #000; padding-top:4px; min-height:14px; }
 
+  .header-section {
+    background-color: #e8f5e9 !important; /* Hijau muda pastel */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    padding: 16px 20px;
+    border-radius: 12px;
+    margin-bottom: 15px;
+    border: 1px solid #c8e6c9;
+  }
+
   @media print {
     body { background:#fff; padding:0; }
     .toolbar { display:none; }
     .sheet { border:none; max-width:100%; }
+    .header-section { border: 1px solid #c8e6c9; }
   }
 </style>
 </head>
@@ -108,38 +119,40 @@ while (count($items) < 10) { $items[] = null; }
 
 <div class="sheet">
 
-  <div class="head-row">
-    <div class="head-left">
-      PT PLN (PERSERO)<br>
-      UNIT INDUK DISTRIBUSI (UID) JAWA TIMUR<br>
-      UNIT PELAKSANA PELAYANAN PELANGGAN (UP3) MALANG
+  <div class="header-section">
+    <div class="head-row">
+      <div class="head-left">
+        PT PLN (PERSERO)<br>
+        UNIT INDUK DISTRIBUSI (UID) JAWA TIMUR<br>
+        UNIT PELAKSANA PELAYANAN PELANGGAN (UP3) MALANG
+      </div>
+      <div class="head-right">
+        <div class="row1">1. Pengantar &nbsp; 2. Security &nbsp; 3. Pengambil material</div>
+        <div class="row2">PERHATIAN :<br>SEMUA RESIKO SETELAH MATERIAL KELUAR DARI LOGISTIK, MENJADI TANGGUNG JAWAB PENGAMBIL MATERIAL</div>
+      </div>
     </div>
-    <div class="head-right">
-      <div class="row1">1. Pengantar &nbsp; 2. Security &nbsp; 3. Pengambil material</div>
-      <div class="row2">PERHATIAN :<br>SEMUA RESIKO SETELAH MATERIAL KELUAR DARI LOGISTIK, MENJADI TANGGUNG JAWAB PENGAMBIL MATERIAL</div>
+
+    <div class="title-block">
+      <h1>SURAT ANGKUTAN</h1>
+      <div class="no-surat"><?= htmlspecialchars($noSurat) ?></div>
     </div>
-  </div>
 
-  <div class="title-block">
-    <h1>SURAT ANGKUTAN</h1>
-    <div class="no-surat"><?= htmlspecialchars($noSurat) ?></div>
+    <table class="info-table">
+      <tr>
+        <td style="width:55%;">
+          <div class="info-line"><span class="info-label">Kendaraan No.</span><span class="info-colon">:</span><span class="info-value"><span class="dotted">&nbsp;</span></span></div>
+          <div class="info-line"><span class="info-label">Nama Pengemudi</span><span class="info-colon">:</span><span class="info-value"><span class="dotted">&nbsp;</span></span></div>
+          <div class="info-line"><span class="info-label">Dari Logistik</span><span class="info-colon">:</span><span class="info-value">UP3 MALANG</span></div>
+          <div class="info-line"><span class="info-label">SPK NO.</span><span class="info-colon">:</span><span class="info-value underline-val"><?= htmlspecialchars($dpb['spk_number'] ?: '-') ?></span></div>
+        </td>
+        <td style="width:45%;" class="bold-right">
+          <?= htmlspecialchars($dpb['vendor_name'] ?: '-') ?><br><br>
+          <?= htmlspecialchars($dpb['ulp'] ?: '-') ?><br><br>
+          <?= htmlspecialchars($dpb['customer_name'] ?: '-') ?>
+        </td>
+      </tr>
+    </table>
   </div>
-
-  <table class="info-table">
-    <tr>
-      <td style="width:55%;">
-        <div class="info-line"><span class="info-label">Kendaraan No.</span><span class="info-colon">:</span><span class="info-value"><span class="dotted">&nbsp;</span></span></div>
-        <div class="info-line"><span class="info-label">Nama Pengemudi</span><span class="info-colon">:</span><span class="info-value"><span class="dotted">&nbsp;</span></span></div>
-        <div class="info-line"><span class="info-label">Dari Logistik</span><span class="info-colon">:</span><span class="info-value">UP3 MALANG</span></div>
-        <div class="info-line"><span class="info-label">SPK NO.</span><span class="info-colon">:</span><span class="info-value underline-val"><?= htmlspecialchars($dpb['spk_number'] ?: '-') ?></span></div>
-      </td>
-      <td style="width:45%;" class="bold-right">
-        <?= htmlspecialchars($dpb['vendor_name'] ?: '-') ?><br><br>
-        <?= htmlspecialchars($dpb['ulp'] ?: '-') ?><br><br>
-        <?= htmlspecialchars($dpb['customer_name'] ?: '-') ?>
-      </td>
-    </tr>
-  </table>
 
   <table class="items">
     <thead>

@@ -70,39 +70,34 @@ if (isset($_POST['register'])) {
     $passwordHash = password_hash($passwordRaw, PASSWORD_DEFAULT);
 
     try {
-        $db->beginTransaction();
-
-        // 1) buat / pakai data vendor
-        $stmt = $db->prepare("SELECT id FROM vendors WHERE LOWER(name) = LOWER(?)");
-        $stmt->execute([$vendorName]);
-        $existingVendor = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if ($existingVendor) {
-            $vendorId = $existingVendor['id'];
-            // lengkapi kontak jika masih kosong
-            $stmt = $db->prepare("UPDATE vendors SET
-                phone = COALESCE(NULLIF(phone,''), ?),
-                address = COALESCE(NULLIF(address,''), ?),
-                email = COALESCE(NULLIF(email,''), ?)
-                WHERE id = ?");
-            $stmt->execute([$vendorPhone, $vendorAddr, $email, $vendorId]);
-        } else {
-            $stmt = $db->prepare("INSERT INTO vendors (name, address, phone, email) VALUES (?, ?, ?, ?) RETURNING id");
-            $stmt->execute([$vendorName, $vendorAddr, $vendorPhone, $email]);
-            $vendorId = $stmt->fetchColumn();
+        // Cek apakah email sudah terdaftar di users aktif
+        $stmt = $db->prepare("SELECT id FROM users WHERE email = ?");
+        $stmt->execute([$email]);
+        if ($stmt->fetch()) {
+            $_SESSION['error'] = "Email \"$email\" sudah terdaftar sebagai pengguna aktif!";
+            $_SESSION['open_modal'] = 'register';
+            header("Location: index.php");
+            exit();
         }
 
-        // 2) buat akun user dengan role vendor, terhubung ke vendor di atas
-        $stmt = $db->prepare("INSERT INTO users (email, password_hash, full_name, role, vendor_id) VALUES (?, ?, ?, 'vendor', ?)");
-        $stmt->execute([$email, $passwordHash, $fullName, $vendorId]);
+        // Cek apakah email sudah ada di pengajuan pending
+        $stmt = $db->prepare("SELECT id FROM vendor_applications WHERE email = ? AND status = 'Menunggu Persetujuan'");
+        $stmt->execute([$email]);
+        if ($stmt->fetch()) {
+            $_SESSION['error'] = "Pendaftaran dengan email \"$email\" sedang menunggu persetujuan admin!";
+            $_SESSION['open_modal'] = 'register';
+            header("Location: index.php");
+            exit();
+        }
 
-        $db->commit();
+        // Simpan ke pengajuan vendor
+        $stmt = $db->prepare("INSERT INTO vendor_applications (name, address, phone, email, password_hash, status) VALUES (?, ?, ?, ?, ?, 'Menunggu Persetujuan')");
+        $stmt->execute([$vendorName, $vendorAddr, $vendorPhone, $email, $passwordHash]);
 
-        $_SESSION['success'] = "Registrasi berhasil! Silakan login.";
+        $_SESSION['success'] = "Pendaftaran PT \"$vendorName\" berhasil dikirim! Menunggu persetujuan Admin.";
         $_SESSION['open_modal'] = 'login';
     } catch (PDOException $e) {
-        $db->rollBack();
-        $_SESSION['error'] = "Email sudah terdaftar atau data tidak valid!";
+        $_SESSION['error'] = "Gagal memproses pendaftaran: " . $e->getMessage();
         $_SESSION['open_modal'] = 'register';
     }
     header("Location: index.php");

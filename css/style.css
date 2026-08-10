@@ -818,3 +818,651 @@ tbody tr:hover {
     width: 100%;
   }
 }
+
+/* =========================================================
+   ADMIN SIDEBAR LAYOUT
+   Semua class diawali "adm-" agar tidak collide dengan
+   style existing (header, vendor, dll tetap tidak tersentuh).
+   ========================================================= */
+
+/* --- Root vars tambahan untuk sidebar & design system tokens --- */
+:root {
+  --sidebar-bg:        linear-gradient(185deg, #09303d 0%, #0d4456 100%);
+  --sidebar-bg-hover:  rgba(255, 255, 255, 0.08);
+  --sidebar-bg-active: rgba(255, 255, 255, 0.12);
+  --sidebar-w:         280px;
+  --sidebar-accent:    var(--gold);
+  --top-header-h:      70px;
+}
+
+/* Body override saat admin layout aktif */
+body.adm-body {
+  background: #f4f7f9;
+  overflow-x: hidden;
+  font-size: 15px; /* Body: 15px (400) */
+  font-weight: 400;
+}
+
+/* --- Wrapper utama --- */
+.adm-layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* =========================================================
+   SIDEBAR
+   ========================================================= */
+.adm-sidebar {
+  width: var(--sidebar-w);
+  min-width: var(--sidebar-w);
+  background: var(--sidebar-bg);
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  z-index: 600;
+  transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1),
+              width 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.04); /* Shadow sangat tipis */
+  overflow: hidden;
+}
+
+/* --- Brand area (logo + nama) --- */
+.adm-brand {
+  display: flex;
+  align-items: center;
+  gap: 16px; /* Jarak logo ke tulisan: 16px */
+  padding: 24px 24px 16px; /* Spacing atas 24px */
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+  text-decoration: none;
+}
+.adm-brand img {
+  height: 42px; /* Logo: 40~44px */
+  width: 42px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.adm-brand-text {
+  color: #fff;
+  font-size: 20px; /* Tulisan VOLTA: Font 20px */
+  font-weight: 700; /* Bold */
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+/* --- Unit info (non-clickable headline) --- */
+.adm-unit-info {
+  padding: 16px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06); /* divider tipis di bawah */
+  flex-shrink: 0;
+}
+.adm-unit-name {
+  color: #ffffff;
+  opacity: 0.9; /* Opacity sekitar 90% */
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 4px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.adm-unit-sub {
+  color: #ffffff;
+  opacity: 0.9; /* Opacity sekitar 90% */
+  font-size: 13px;
+  font-weight: 500;
+  margin: 0;
+  white-space: nowrap;
+}
+
+/* --- Nav items --- */
+.adm-nav {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px 12px;
+  scrollbar-width: none;
+}
+.adm-nav::-webkit-scrollbar { display: none; }
+
+.adm-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 14px; /* Gap icon dengan text: 14px */
+  height: 52px; /* Tinggi menu: 52px */
+  padding: 0 18px; /* Padding horizontal: 18px */
+  margin-bottom: 8px; /* Jarak antar menu: 8px */
+  color: #ffffff;
+  text-decoration: none;
+  font-size: 16px; /* Menu: 16px (500) */
+  font-weight: 500;
+  border-left: 4px solid transparent;
+  border-radius: 12px; /* Border Radius: 12px */
+  transition: background 200ms ease, color 200ms ease, border-color 200ms ease, transform 200ms ease;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.adm-nav-item i {
+  font-size: 22px; /* Icon: 22-24px */
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+  color: #ffffff; /* Icon WAJIB putih solid */
+  opacity: 1; /* Jangan menggunakan opacity */
+}
+.adm-nav-item:hover {
+  background: var(--sidebar-bg-hover);
+  color: #ffffff;
+  transform: translateX(2px); /* Hover: translateX(2px) */
+}
+.adm-nav-item.active {
+  background: rgba(255, 255, 255, 0.12); /* Active: rgba(255,255,255,.12) */
+  color: #ffffff;
+  font-weight: 700;
+  border-left-color: var(--sidebar-accent); /* Border kiri: 4px warna kuning PLN */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); /* Shadow sangat tipis */
+  border-radius: 12px; /* Radius: 12px */
+}
+.adm-nav-item.active i {
+  color: #ffffff; /* Tetap putih solid */
+}
+
+/* --- Footer (Profile & Logout) --- */
+.adm-sidebar-footer {
+  padding: 16px;
+  margin-top: auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* --- Profile section --- */
+.adm-profile-wrap {
+  padding: 0 0 8px;
+}
+.adm-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 64px; /* Height: 64px */
+  padding: 0 12px;
+  border-radius: 12px; /* Radius: 12px */
+  background: rgba(255, 255, 255, 0.04);
+}
+.adm-profile-avatar {
+  width: 40px; /* Avatar: 40px */
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 1.2rem;
+  color: #fff;
+  overflow: hidden;
+}
+.adm-profile-info {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.adm-profile-name {
+  color: #ffffff;
+  font-size: 16px; /* Nama: 16px */
+  font-weight: 600;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+.adm-profile-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 20px;
+  background: var(--gold);
+  color: var(--navy-dark);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 2px;
+}
+.adm-profile-chevron {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+/* --- Keluar button --- */
+.adm-logout-wrap {
+  padding: 8px 0 0;
+}
+.adm-logout-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%; /* Width: 100% */
+  height: 48px; /* Height: 48px */
+  padding: 0 16px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  text-decoration: none;
+  border-radius: 12px; /* Radius: 12px */
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 200ms ease, color 200ms ease, border-color 200ms ease;
+  margin-top: 16px; /* Margin Top: 16px */
+}
+.adm-logout-btn i {
+  font-size: 18px;
+  color: #ffffff;
+}
+.adm-logout-btn:hover {
+  background: rgba(214, 69, 69, 0.2);
+  border-color: rgba(214, 69, 69, 0.4);
+  color: #ff9e9e;
+}
+
+/* =========================================================
+   TOP HEADER BAR
+   ========================================================= */
+.adm-topbar {
+  position: fixed;
+  top: 0;
+  left: var(--sidebar-w);
+  right: 0;
+  height: var(--top-header-h);
+  background: #ffffff;
+  border-bottom: 1px solid #eef2f6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px; /* Padding samping: 32px */
+  z-index: 500;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+  transition: left 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.adm-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.adm-sidebar-toggle {
+  display: flex; /* selalu tampil di desktop */
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 22px; /* Ukuran 22px */
+  color: var(--text-dark);
+  width: 44px; /* Area klik 44x44 */
+  height: 44px;
+  border-radius: 8px;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.adm-sidebar-toggle:hover {
+  background: #f0f4f7;
+}
+
+.adm-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* Notif bell */
+.adm-notif-btn {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  background: #f4f7f9;
+  border: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-dark);
+  font-size: 1.1rem;
+  transition: background 0.15s;
+}
+.adm-notif-btn:hover {
+  background: var(--blue-light);
+}
+.adm-notif-badge {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  border: 2px solid #fff;
+}
+
+/* User info di topbar */
+.adm-topbar-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.adm-topbar-username {
+  font-size: 15px; /* Body: 15px */
+  font-weight: 600;
+  color: var(--navy);
+  white-space: nowrap;
+}
+.adm-topbar-user .role-badge.role-vendor {
+  background: var(--blue-light);
+  color: var(--navy);
+}
+.adm-topbar-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--header-grad-start), var(--header-grad-mid));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+/* =========================================================
+   MAIN CONTENT WRAPPER (kanan sidebar)
+   ========================================================= */
+.adm-main {
+  margin-left: var(--sidebar-w); /* margin-left: 280px */
+  flex: 1;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  transition: margin-left 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.adm-content {
+  margin-top: var(--top-header-h);
+  flex: 1;
+}
+
+/* Hero banner override saat admin layout */
+.adm-content .hero-banner {
+  height: 280px; /* Dipertinggi sedikit */
+  border-radius: 20px;
+  overflow: hidden;
+  margin-bottom: 24px;
+  position: relative;
+  width: 100%;
+  isolation: isolate; /* Force stacking context for clean border-radius clipping */
+}
+.adm-content .hero-banner img {
+  border-radius: 20px;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Card VOLTA PLN override agar lebih pendek (hemat ruang vertikal) */
+.adm-content .hero-card {
+  padding: 1.5rem 2rem; /* padding lebih pendek */
+  border-radius: 20px;
+  margin-bottom: 24px;
+}
+.adm-content .hero-card h1 {
+  font-size: 1.8rem !important; /* font size diperkecil */
+  margin-bottom: 8px !important;
+}
+.adm-content .hero-card p {
+  margin-bottom: 12px !important;
+  font-size: 14px;
+}
+
+/* App wrapper override — spacing system */
+.adm-content .app-wrapper {
+  max-width: none;
+  padding: 24px 32px 32px; /* Padding: atas 24px, kiri 32px, kanan 32px, bawah 32px */
+}
+
+/* Alert override */
+.adm-content .alert-success,
+.adm-content .alert-danger {
+  height: 54px; /* Height: 54px */
+  border-radius: 12px; /* Radius: 12px */
+  margin-top: 20px; /* Margin Top: 20px */
+  margin-bottom: 24px; /* Margin Bottom: 24px */
+  display: flex;
+  align-items: center;
+  padding: 0 18px;
+}
+
+/* =========================================================
+   KPI CARDS (4 Column Grid)
+   ========================================================= */
+.adm-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr); /* Grid: 4 Column */
+  gap: 24px; /* Gap: 24px */
+  margin-top: 24px;
+  margin-bottom: 32px;
+}
+
+.adm-kpi-card {
+  height: 128px; /* Height: 128px */
+  padding: 24px; /* Padding: 24px */
+  background: #ffffff;
+  border-radius: 18px; /* Radius: 18px */
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06); /* Shadow: 0 8px 24px rgba(15,23,42,.06) */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid #eef2f6;
+  transition: transform 250ms ease, box-shadow 250ms ease, border-color 250ms ease;
+}
+.adm-kpi-card.clickable-kpi-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+  border-color: #14828a;
+}
+
+.adm-kpi-content {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.adm-kpi-number {
+  font-size: 36px; /* Angka: 36px */
+  font-weight: 700; /* Bold */
+  color: var(--navy);
+  line-height: 1.1;
+  margin-bottom: 4px;
+}
+
+.adm-kpi-label {
+  font-size: 15px; /* Label: 15px */
+  font-weight: 500;
+  color: var(--text-dark);
+}
+
+.adm-kpi-icon-wrap {
+  width: 52px; /* Icon Container: 52px */
+  height: 52px;
+  border-radius: 16px; /* Radius: 16px */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+/* =========================================================
+   GENERAL CARDS
+   ========================================================= */
+.adm-content .card {
+  background: #ffffff;
+  border-radius: 18px; /* Radius: 18px */
+  padding: 24px; /* Padding: 24px */
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06); /* Shadow: 0 8px 24px rgba(15,23,42,.06) */
+  border: 1px solid #eef2f6;
+}
+.adm-content .card h3 {
+  font-size: 22px; /* Card Title: 22px */
+  font-weight: 600; /* 600 */
+  color: var(--navy);
+  margin-top: 0;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid #f4f7f9;
+  padding-bottom: 12px;
+}
+
+/* Collapsed state via JS class (berlaku di Desktop & Tablet) */
+.adm-layout.sidebar-collapsed .adm-sidebar {
+  transform: translateX(calc(-1 * var(--sidebar-w)));
+}
+.adm-layout.sidebar-collapsed .adm-topbar {
+  left: 0;
+}
+.adm-layout.sidebar-collapsed .adm-main {
+  margin-left: 0;
+}
+
+/* =========================================================
+   SIDEBAR COLLAPSED (tablet ≤ 1024px)
+   ========================================================= */
+@media (max-width: 1024px) {
+  .adm-sidebar-toggle {
+    display: flex;
+  }
+
+  /* Default di tablet: sidebar tertutup (collapsed) by default */
+  .adm-main {
+    margin-left: var(--sidebar-w);
+  }
+  .adm-topbar {
+    left: var(--sidebar-w);
+  }
+}
+
+/* =========================================================
+   MOBILE DRAWER (≤ 768px)
+   ========================================================= */
+@media (max-width: 768px) {
+  :root {
+    --sidebar-w: 280px;
+  }
+
+  /* Mobile: sidebar awalnya tersembunyi (drawer) */
+  .adm-sidebar {
+    transform: translateX(calc(-1 * var(--sidebar-w)));
+    box-shadow: none;
+  }
+  .adm-main {
+    margin-left: 0;
+  }
+  .adm-topbar {
+    left: 0;
+  }
+
+  /* Drawer terbuka */
+  .adm-layout.drawer-open .adm-sidebar {
+    transform: translateX(0);
+    box-shadow: 4px 0 40px rgba(0,0,0,0.35);
+  }
+  .adm-layout.drawer-open .adm-main {
+    margin-left: 0;
+  }
+
+  /* Overlay hitam saat drawer terbuka */
+  .adm-drawer-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 590;
+  }
+  .adm-layout.drawer-open .adm-drawer-overlay {
+    display: block;
+  }
+
+  .adm-content .app-wrapper {
+    padding: 16px 16px 24px;
+  }
+  .adm-content .hero-banner {
+    height: 180px;
+  }
+  .adm-topbar {
+    padding: 0 16px;
+  }
+  .adm-topbar-username {
+    display: none;
+  }
+}
+
+/* =========================================================
+   GUDANG TABS & SIMPLIFIED ACTIONS
+   ========================================================= */
+.g2-tabs-container {
+  display: flex;
+  gap: 8px;
+  margin-top: 24px;
+  margin-bottom: 16px;
+  border-bottom: 2px solid #e2e8f0;
+  padding-bottom: 2px;
+}
+.g2-tab-btn {
+  background: none;
+  border: none;
+  padding: 10px 20px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  border-radius: 8px 8px 0 0;
+  border-bottom: 3px solid transparent;
+  transition: all 0.15s ease;
+  text-decoration: none;
+}
+.g2-tab-btn:hover {
+  color: var(--blue);
+  background: #f8fafc;
+}
+.g2-tab-btn.active {
+  color: var(--blue);
+  border-bottom-color: var(--blue);
+  background: #f0fdfa;
+}
+.g2-search-filter-card {
+  background: white;
+  border: 1px solid rgba(0,0,0,0.05);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: var(--shadow);
+  margin-bottom: 20px;
+}
+
+

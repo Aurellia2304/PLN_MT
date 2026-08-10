@@ -225,7 +225,7 @@ function loadPendingDpbList() {
 var currentMaterialsList = [];
 var materialActiveList = []; // list yang sedang ditampilkan (setelah filter pencarian)
 var materialCurrentPage = 1;
-var MATERIAL_PAGE_SIZE = 20;
+var MATERIAL_PAGE_SIZE = 10;
 
 function showMaterialList() {
   var container = document.getElementById("materialListContainer");
@@ -394,40 +394,179 @@ function buildMaterialPaginationHtml(current, total) {
 }
 
 // Ekspor SELURUH hasil pencarian/filter yang sedang aktif (bukan cuma halaman yang tampil) ke Excel
+// Ekspor data material dari database ke berkas CSV
 function exportMaterialsToExcel() {
-  if (!materialActiveList || !materialActiveList.length) {
-    alert("Belum ada data material untuk diekspor.");
-    return;
-  }
-
-  var header = ["No", "Nama Material", "Normalisasi", "Satuan", "Jumlah"];
-
-  var rows = materialActiveList.map(function (m, i) {
-    return [i + 1, m.name || "-", m.norm || "-", m.unit || "-", m.stock ?? 0];
-  });
-
-  function csvCell(val) {
-    var s = String(val === null || val === undefined ? "" : val);
-    s = s.replace(/"/g, '""');
-    return '"' + s + '"';
-  }
-
-  var csv = header.map(csvCell).join(";") + "\r\n";
-  rows.forEach(function (row) {
-    csv += row.map(csvCell).join(";") + "\r\n";
-  });
-
-  var blob = new Blob(["\uFEFF" + csv], {
-    type: "application/vnd.ms-excel;charset=utf-8;",
-  });
-
-  var link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = "daftar_material.csv";
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  window.location.href = "material.php?action=export";
 }
+
+function openImportModal() {
+  resetImportModal();
+  document.getElementById("materialImportModal").classList.add("show");
+}
+
+function closeImportModal() {
+  document.getElementById("materialImportModal").classList.remove("show");
+}
+
+function triggerImportFileSelect() {
+  document.getElementById("importFileInput").click();
+}
+
+function handleImportFileSelect(event) {
+  var file = event.target.files[0];
+  if (!file) return;
+
+  var uploadArea = document.getElementById("importUploadArea");
+  var previewBlock = document.getElementById("importPreviewBlock");
+  var statusAlert = document.getElementById("importStatusAlert");
+  var errorList = document.getElementById("importErrorList");
+  var tableContainer = document.getElementById("importTableContainer");
+  var tbody = document.getElementById("importPreviewTbody");
+  var btnConfirm = document.getElementById("btnConfirmImport");
+
+  uploadArea.style.display = "none";
+  previewBlock.style.display = "block";
+  statusAlert.style.display = "none";
+  errorList.style.display = "none";
+  tableContainer.style.display = "none";
+  btnConfirm.disabled = true;
+
+  var formData = new FormData();
+  formData.append("file", file);
+
+  statusAlert.className = "alert-info";
+  statusAlert.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Membaca dan memvalidasi berkas...';
+  statusAlert.style.display = "block";
+
+  fetch("material.php?action=import_validate", {
+    method: "POST",
+    body: formData
+  })
+  .then(function(res) {
+    return res.json();
+  })
+  .then(function(data) {
+    if (data.error) {
+      statusAlert.className = "alert-danger";
+      statusAlert.innerHTML = '<i class="fas fa-times-circle"></i> Gagal: ' + escapeHtml(data.error);
+      btnConfirm.disabled = true;
+      return;
+    }
+
+    if (data.success === false && data.errors && data.errors.length > 0) {
+      statusAlert.className = "alert-danger";
+      statusAlert.innerHTML = '<i class="fas fa-times-circle"></i> Validasi gagal. Silakan perbaiki baris data berikut:';
+      
+      var errorHtml = '<strong>Detail Kesalahan:</strong><ul style="margin: 0.5rem 0 0 1.2rem; padding: 0; text-align: left;">';
+      data.errors.forEach(function(err) {
+        errorHtml += '<li>' + escapeHtml(err) + '</li>';
+      });
+      errorHtml += '</ul>';
+      
+      // Reset custom warning style
+      errorList.style.background = "";
+      errorList.style.color = "";
+      errorList.style.border = "";
+      
+      errorList.innerHTML = errorHtml;
+      errorList.style.display = "block";
+      btnConfirm.disabled = true;
+      return;
+    }
+
+    if (data.success === true) {
+      statusAlert.className = "alert-success";
+      statusAlert.innerHTML = '<i class="fas fa-check-circle"></i> ' + data.validCount + ' data material siap diimport.';
+      
+      if (data.warnings && data.warnings.length > 0) {
+        var warnHtml = '<strong>Peringatan (Duplikasi Terdeteksi):</strong><ul style="margin: 0.5rem 0 0 1.2rem; padding: 0; text-align: left;">';
+        data.warnings.forEach(function(warn) {
+          warnHtml += '<li>' + escapeHtml(warn) + '</li>';
+        });
+        warnHtml += '</ul><p style="margin-top: 0.5rem; font-size: 0.8rem; font-weight: bold; color: #713f12;">* Anda tetap dapat melanjutkan impor dengan menekan tombol Konfirmasi Import di bawah.</p>';
+        
+        errorList.innerHTML = warnHtml;
+        errorList.style.background = "#fef9c3";
+        errorList.style.color = "#713f12";
+        errorList.style.border = "1px solid #fef08a";
+        errorList.style.display = "block";
+      } else {
+        errorList.style.display = "none";
+      }
+      
+      var tbodyHtml = '';
+      data.preview.forEach(function(row) {
+        tbodyHtml += '<tr>' +
+          '<td>' + escapeHtml(row.name || '-') + '</td>' +
+          '<td>' + escapeHtml(row.norm || '-') + '</td>' +
+          '<td>' + escapeHtml(row.unit || 'BH') + '</td>' +
+          '<td>' + escapeHtml(String(row.stock || 0)) + '</td>' +
+          '</tr>';
+      });
+      tbody.innerHTML = tbodyHtml;
+      tableContainer.style.display = "block";
+      btnConfirm.disabled = false;
+    }
+  })
+  .catch(function(err) {
+    statusAlert.className = "alert-danger";
+    statusAlert.innerHTML = '<i class="fas fa-times-circle"></i> Terjadi kesalahan jaringan saat validasi.';
+  });
+}
+
+function confirmImportData() {
+  var statusAlert = document.getElementById("importStatusAlert");
+  var btnConfirm = document.getElementById("btnConfirmImport");
+  
+  btnConfirm.disabled = true;
+  statusAlert.className = "alert-info";
+  statusAlert.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Menyimpan data ke database...';
+
+  fetch("material.php?action=import_confirm", {
+    method: "POST"
+  })
+  .then(function(res) {
+    return res.json();
+  })
+  .then(function(data) {
+    if (data.error) {
+      statusAlert.className = "alert-danger";
+      statusAlert.innerHTML = '<i class="fas fa-times-circle"></i> Gagal menyimpan: ' + escapeHtml(data.error);
+      btnConfirm.disabled = false;
+      return;
+    }
+
+    if (data.success === true) {
+      statusAlert.className = "alert-success";
+      statusAlert.innerHTML = '<i class="fas fa-check-circle"></i> Import berhasil! ' + data.count + ' material baru ditambahkan.';
+      
+      if (typeof showMaterialList === 'function') {
+        showMaterialList();
+      }
+
+      setTimeout(function() {
+        window.location.reload();
+      }, 1500);
+    }
+  })
+  .catch(function(err) {
+    statusAlert.className = "alert-danger";
+    statusAlert.innerHTML = '<i class="fas fa-times-circle"></i> Terjadi kesalahan jaringan saat konfirmasi.';
+    btnConfirm.disabled = false;
+  });
+}
+
+function resetImportModal() {
+  document.getElementById("importFileInput").value = "";
+  document.getElementById("importUploadArea").style.display = "block";
+  document.getElementById("importPreviewBlock").style.display = "none";
+  document.getElementById("importStatusAlert").style.display = "none";
+  document.getElementById("importErrorList").style.display = "none";
+  document.getElementById("importTableContainer").style.display = "none";
+  document.getElementById("importPreviewTbody").innerHTML = "";
+  document.getElementById("btnConfirmImport").disabled = true;
+}
+
 
 function filterMaterialTable() {
   var input = document.getElementById("materialSearchInput");

@@ -228,25 +228,710 @@ if (!$is_logged_in) {
 // beda total dari situs admin gudang 1 / vendor (header/nav/hero biasa
 // tidak pernah dirender untuk role ini) — tapi tetap lewat login.php /
 // auth.php yang sama persis, jadi bukan file/site terpisah.
-if ($is_gudang2) {
-    include 'gudang2_view.php';
-    exit();
-}
+
 
 $vendors      = getVendors($db);
 $materials    = getMaterials($db);
 $my_vendor    = $is_vendor ? getVendorById($db, currentVendorId()) : null;
 $page         = $_GET['page'] ?? 'home';
 $prefillTug   = $_GET['tug'] ?? '';
-$riwayatStart = $_GET['start'] ?? '';
-$riwayatEnd   = $_GET['end'] ?? '';
-if ($page === 'riwayat' && $is_vendor) {
-    $riwayat = getVendorHistory($db, currentVendorId(), $riwayatStart ?: null, $riwayatEnd ?: null);
-} elseif ($page === 'riwayat' && $is_admin) {
-    $riwayat = getAllHistory($db, $riwayatStart ?: null, $riwayatEnd ?: null);
-} else {
-    $riwayat = [];
+
+$limit = 10;
+$apage = isset($_GET['apage']) ? max(1, (int)$_GET['apage']) : 1;
+$hpage = isset($_GET['hpage']) ? max(1, (int)$_GET['hpage']) : 1;
+
+$q = trim($_GET['q'] ?? '');
+$startDate = trim($_GET['start'] ?? '');
+$endDate = trim($_GET['end'] ?? '');
+
+$active_list = [];
+$history_list = [];
+$totalActivePages = 0;
+$totalHistoryPages = 0;
+$paged_vendors = [];
+$paged_applications = [];
+$totalActiveRows = 0;
+$totalHistoryRows = 0;
+
+if ($page === 'dpb') {
+    if ($is_gudang2) {
+        $tab = $_GET['tab'] ?? 'active';
+        $sqlConds = [];
+        $sqlParams = [];
+        
+        if ($tab === 'active') {
+            $sqlConds[] = "d.status IN ('belum_jalan', 'aktif', 'menunggu_persetujuan')";
+        } else {
+            $sqlConds[] = "d.status = 'selesai'";
+        }
+        
+        if ($q !== '') {
+            $sqlConds[] = "(d.tug_number ILIKE ? OR v.name ILIKE ?)";
+            $sqlParams[] = '%' . $q . '%';
+            $sqlParams[] = '%' . $q . '%';
+        }
+        if ($startDate !== '' && $endDate !== '') {
+            $sqlConds[] = "d.tanggal_diminta BETWEEN ? AND ?";
+            $sqlParams[] = $startDate;
+            $sqlParams[] = $endDate;
+        }
+        
+        $condsStr = empty($sqlConds) ? "1=1" : implode(' AND ', $sqlConds);
+        
+        $countQuery = "SELECT COUNT(*) FROM dpb_transactions d LEFT JOIN vendors v ON d.vendor_id = v.id WHERE $condsStr";
+        $stmtCount = $db->prepare($countQuery);
+        $stmtCount->execute($sqlParams);
+        $totalRows = (int)$stmtCount->fetchColumn();
+        $totalPages = ceil($totalRows / $limit);
+        
+        $offset = ($apage - 1) * $limit;
+        $dataQuery = "
+            SELECT d.*, v.name AS vendor_name 
+            FROM dpb_transactions d 
+            LEFT JOIN vendors v ON d.vendor_id = v.id 
+            WHERE $condsStr
+            ORDER BY d.tanggal_diminta DESC, d.id DESC
+            LIMIT ? OFFSET ?
+        ";
+        $stmtData = $db->prepare($dataQuery);
+        
+        $sqlParams[] = $limit;
+        $sqlParams[] = $offset;
+        
+        $paramIdx = 1;
+        foreach ($sqlParams as $val) {
+            $stmtData->bindValue($paramIdx++, $val, is_int($val) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $stmtData->execute();
+        $gudang_list = $stmtData->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    $offsetActive = ($apage - 1) * $limit;
+    $vendorFilter = $is_vendor ? "AND d.vendor_id = " . (int)currentVendorId() : "";
+
+    $countActiveStmt = $db->query("SELECT COUNT(*) FROM dpb_transactions d WHERE d.status IN ('belum_jalan', 'aktif', 'menunggu_persetujuan') $vendorFilter");
+    $totalActiveRows = (int)$countActiveStmt->fetchColumn();
+    $totalActivePages = ceil($totalActiveRows / $limit);
+
+    $activeDpbStmt = $db->prepare("
+        SELECT d.*, v.name AS vendor_name 
+        FROM dpb_transactions d 
+        LEFT JOIN vendors v ON d.vendor_id = v.id 
+        WHERE d.status IN ('belum_jalan', 'aktif', 'menunggu_persetujuan') $vendorFilter
+        ORDER BY d.tanggal_diminta DESC, d.id DESC
+        LIMIT ? OFFSET ?
+    ");
+    $activeDpbStmt->bindValue(1, $limit, PDO::PARAM_INT);
+    $activeDpbStmt->bindValue(2, $offsetActive, PDO::PARAM_INT);
+    $activeDpbStmt->execute();
+    $active_list = $activeDpbStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $offsetHistory = ($hpage - 1) * $limit;
+    $sqlConds = ["d.status = 'selesai'"];
+    $sqlParams = [];
+
+    if ($is_vendor) {
+        $sqlConds[] = "d.vendor_id = ?";
+        $sqlParams[] = currentVendorId();
+    }
+    if ($q !== '') {
+        $sqlConds[] = "(d.tug_number ILIKE ? OR v.name ILIKE ?)";
+        $sqlParams[] = '%' . $q . '%';
+        $sqlParams[] = '%' . $q . '%';
+    }
+    if ($startDate !== '' && $endDate !== '') {
+        $sqlConds[] = "d.tanggal_diminta BETWEEN ? AND ?";
+        $sqlParams[] = $startDate;
+        $sqlParams[] = $endDate;
+    }
+
+    $condsStr = implode(' AND ', $sqlConds);
+
+    $countHistoryQuery = "SELECT COUNT(*) FROM dpb_transactions d LEFT JOIN vendors v ON d.vendor_id = v.id WHERE $condsStr";
+    $stmtCountHistory = $db->prepare($countHistoryQuery);
+    $stmtCountHistory->execute($sqlParams);
+    $totalHistoryRows = (int)$stmtCountHistory->fetchColumn();
+    $totalHistoryPages = ceil($totalHistoryRows / $limit);
+
+    $historyQuery = "
+        SELECT d.*, v.name AS vendor_name 
+        FROM dpb_transactions d 
+        LEFT JOIN vendors v ON d.vendor_id = v.id 
+        WHERE $condsStr
+        ORDER BY d.tanggal_diminta DESC, d.id DESC
+        LIMIT ? OFFSET ?
+    ";
+    $stmtHistory = $db->prepare($historyQuery);
+    $paramIdx = 1;
+    foreach ($sqlParams as $p) {
+        $stmtHistory->bindValue($paramIdx++, $p);
+    }
+    $stmtHistory->bindValue($paramIdx++, $limit, PDO::PARAM_INT);
+    $stmtHistory->bindValue($paramIdx++, $offsetHistory, PDO::PARAM_INT);
+    $stmtHistory->execute();
+    $history_list = $stmtHistory->fetchAll(PDO::FETCH_ASSOC);
+
+} elseif ($page === 'k3') {
+    if ($is_gudang2) {
+        $tab = $_GET['tab'] ?? 'active';
+        $sqlConds = [];
+        $sqlParams = [];
+        
+        if ($tab === 'active') {
+            $sqlConds[] = "k.status IN ('belum_jalan', 'aktif')";
+        } else {
+            $sqlConds[] = "k.status = 'selesai'";
+        }
+        
+        if ($q !== '') {
+            $sqlConds[] = "(k.tug_number ILIKE ? OR v.name ILIKE ?)";
+            $sqlParams[] = '%' . $q . '%';
+            $sqlParams[] = '%' . $q . '%';
+        }
+        if ($startDate !== '' && $endDate !== '') {
+            $sqlConds[] = "k.tanggal_diminta BETWEEN ? AND ?";
+            $sqlParams[] = $startDate;
+            $sqlParams[] = $endDate;
+        }
+        
+        $condsStr = empty($sqlConds) ? "1=1" : implode(' AND ', $sqlConds);
+        
+        $countQuery = "SELECT COUNT(*) FROM k3_transactions k LEFT JOIN vendors v ON k.vendor_id = v.id WHERE $condsStr";
+        $stmtCount = $db->prepare($countQuery);
+        $stmtCount->execute($sqlParams);
+        $totalRows = (int)$stmtCount->fetchColumn();
+        $totalPages = ceil($totalRows / $limit);
+        
+        $offset = ($apage - 1) * $limit;
+        $dataQuery = "
+            SELECT k.*, v.name AS vendor_name 
+            FROM k3_transactions k 
+            LEFT JOIN vendors v ON k.vendor_id = v.id 
+            WHERE $condsStr
+            ORDER BY k.tanggal_diminta DESC, k.id DESC
+            LIMIT ? OFFSET ?
+        ";
+        $stmtData = $db->prepare($dataQuery);
+        
+        $sqlParams[] = $limit;
+        $sqlParams[] = $offset;
+        
+        $paramIdx = 1;
+        foreach ($sqlParams as $val) {
+            $stmtData->bindValue($paramIdx++, $val, is_int($val) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $stmtData->execute();
+        $gudang_list = $stmtData->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    $offsetActive = ($apage - 1) * $limit;
+    $vendorFilter = $is_vendor ? "AND k.vendor_id = " . (int)currentVendorId() : "";
+
+    $countActiveStmt = $db->query("SELECT COUNT(*) FROM k3_transactions k WHERE k.status IN ('belum_jalan', 'aktif') $vendorFilter");
+    $totalActiveRows = (int)$countActiveStmt->fetchColumn();
+    $totalActivePages = ceil($totalActiveRows / $limit);
+
+    $activeK3Stmt = $db->prepare("
+        SELECT k.*, v.name AS vendor_name 
+        FROM k3_transactions k 
+        LEFT JOIN vendors v ON k.vendor_id = v.id 
+        WHERE k.status IN ('belum_jalan', 'aktif') $vendorFilter
+        ORDER BY k.tanggal_diminta DESC, k.id DESC
+        LIMIT ? OFFSET ?
+    ");
+    $activeK3Stmt->bindValue(1, $limit, PDO::PARAM_INT);
+    $activeK3Stmt->bindValue(2, $offsetActive, PDO::PARAM_INT);
+    $activeK3Stmt->execute();
+    $active_list = $activeK3Stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $offsetHistory = ($hpage - 1) * $limit;
+    $sqlConds = ["k.status = 'selesai'"];
+    $sqlParams = [];
+
+    if ($is_vendor) {
+        $sqlConds[] = "k.vendor_id = ?";
+        $sqlParams[] = currentVendorId();
+    }
+    if ($q !== '') {
+        $sqlConds[] = "(k.tug_number ILIKE ? OR v.name ILIKE ?)";
+        $sqlParams[] = '%' . $q . '%';
+        $sqlParams[] = '%' . $q . '%';
+    }
+    if ($startDate !== '' && $endDate !== '') {
+        $sqlConds[] = "k.tanggal_diminta BETWEEN ? AND ?";
+        $sqlParams[] = $startDate;
+        $sqlParams[] = $endDate;
+    }
+
+    $condsStr = implode(' AND ', $sqlConds);
+
+    $countHistoryQuery = "SELECT COUNT(*) FROM k3_transactions k LEFT JOIN vendors v ON k.vendor_id = v.id WHERE $condsStr";
+    $stmtCountHistory = $db->prepare($countHistoryQuery);
+    $stmtCountHistory->execute($sqlParams);
+    $totalHistoryRows = (int)$stmtCountHistory->fetchColumn();
+    $totalHistoryPages = ceil($totalHistoryRows / $limit);
+
+    $historyQuery = "
+        SELECT k.*, v.name AS vendor_name 
+        FROM k3_transactions k 
+        LEFT JOIN vendors v ON k.vendor_id = v.id 
+        WHERE $condsStr
+        ORDER BY k.tanggal_diminta DESC, k.id DESC
+        LIMIT ? OFFSET ?
+    ";
+    $stmtHistory = $db->prepare($historyQuery);
+    $paramIdx = 1;
+    foreach ($sqlParams as $p) {
+        $stmtHistory->bindValue($paramIdx++, $p);
+    }
+    $stmtHistory->bindValue($paramIdx++, $limit, PDO::PARAM_INT);
+    $stmtHistory->bindValue($paramIdx++, $offsetHistory, PDO::PARAM_INT);
+    $stmtHistory->execute();
+    $history_list = $stmtHistory->fetchAll(PDO::FETCH_ASSOC);
+
+} elseif ($page === 'k7') {
+    if ($is_gudang2) {
+        $tab = $_GET['tab'] ?? 'active';
+        $sqlConds = [];
+        $sqlParams = [];
+        
+        if ($tab === 'active') {
+            $sqlConds[] = "k.status IN ('belum_jalan', 'aktif')";
+        } else {
+            $sqlConds[] = "k.status = 'selesai'";
+        }
+        
+        if ($q !== '') {
+            $sqlConds[] = "(k.tug_number ILIKE ? OR v.name ILIKE ?)";
+            $sqlParams[] = '%' . $q . '%';
+            $sqlParams[] = '%' . $q . '%';
+        }
+        if ($startDate !== '' && $endDate !== '') {
+            $sqlConds[] = "k.tanggal_diminta BETWEEN ? AND ?";
+            $sqlParams[] = $startDate;
+            $sqlParams[] = $endDate;
+        }
+        
+        $condsStr = empty($sqlConds) ? "1=1" : implode(' AND ', $sqlConds);
+        
+        $countQuery = "SELECT COUNT(*) FROM k7_transactions k LEFT JOIN vendors v ON k.vendor_id = v.id WHERE $condsStr";
+        $stmtCount = $db->prepare($countQuery);
+        $stmtCount->execute($sqlParams);
+        $totalRows = (int)$stmtCount->fetchColumn();
+        $totalPages = ceil($totalRows / $limit);
+        
+        $offset = ($apage - 1) * $limit;
+        $dataQuery = "
+            SELECT k.*, v.name AS vendor_name 
+            FROM k7_transactions k 
+            LEFT JOIN vendors v ON k.vendor_id = v.id 
+            WHERE $condsStr
+            ORDER BY k.tanggal_diminta DESC, k.id DESC
+            LIMIT ? OFFSET ?
+        ";
+        $stmtData = $db->prepare($dataQuery);
+        
+        $sqlParams[] = $limit;
+        $sqlParams[] = $offset;
+        
+        $paramIdx = 1;
+        foreach ($sqlParams as $val) {
+            $stmtData->bindValue($paramIdx++, $val, is_int($val) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $stmtData->execute();
+        $gudang_list = $stmtData->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    $offsetActive = ($apage - 1) * $limit;
+    $vendorFilter = $is_vendor ? "AND k.vendor_id = " . (int)currentVendorId() : "";
+
+    $countActiveStmt = $db->query("SELECT COUNT(*) FROM k7_transactions k WHERE k.status IN ('belum_jalan', 'aktif') $vendorFilter");
+    $totalActiveRows = (int)$countActiveStmt->fetchColumn();
+    $totalActivePages = ceil($totalActiveRows / $limit);
+
+    $activeK7Stmt = $db->prepare("
+        SELECT k.*, v.name AS vendor_name 
+        FROM k7_transactions k 
+        LEFT JOIN vendors v ON k.vendor_id = v.id 
+        WHERE k.status IN ('belum_jalan', 'aktif') $vendorFilter
+        ORDER BY k.tanggal_diminta DESC, k.id DESC
+        LIMIT ? OFFSET ?
+    ");
+    $activeK7Stmt->bindValue(1, $limit, PDO::PARAM_INT);
+    $activeK7Stmt->bindValue(2, $offsetActive, PDO::PARAM_INT);
+    $activeK7Stmt->execute();
+    $active_list = $activeK7Stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $offsetHistory = ($hpage - 1) * $limit;
+    $sqlConds = ["k.status = 'selesai'"];
+    $sqlParams = [];
+
+    if ($is_vendor) {
+        $sqlConds[] = "k.vendor_id = ?";
+        $sqlParams[] = currentVendorId();
+    }
+    if ($q !== '') {
+        $sqlConds[] = "(k.tug_number ILIKE ? OR v.name ILIKE ?)";
+        $sqlParams[] = '%' . $q . '%';
+        $sqlParams[] = '%' . $q . '%';
+    }
+    if ($startDate !== '' && $endDate !== '') {
+        $sqlConds[] = "k.tanggal_diminta BETWEEN ? AND ?";
+        $sqlParams[] = $startDate;
+        $sqlParams[] = $endDate;
+    }
+
+    $condsStr = implode(' AND ', $sqlConds);
+
+    $countHistoryQuery = "SELECT COUNT(*) FROM k7_transactions k LEFT JOIN vendors v ON k.vendor_id = v.id WHERE $condsStr";
+    $stmtCountHistory = $db->prepare($countHistoryQuery);
+    $stmtCountHistory->execute($sqlParams);
+    $totalHistoryRows = (int)$stmtCountHistory->fetchColumn();
+    $totalHistoryPages = ceil($totalHistoryRows / $limit);
+
+    $historyQuery = "
+        SELECT k.*, v.name AS vendor_name 
+        FROM k7_transactions k 
+        LEFT JOIN vendors v ON k.vendor_id = v.id 
+        WHERE $condsStr
+        ORDER BY k.tanggal_diminta DESC, k.id DESC
+        LIMIT ? OFFSET ?
+    ";
+    $stmtHistory = $db->prepare($historyQuery);
+    $paramIdx = 1;
+    foreach ($sqlParams as $p) {
+        $stmtHistory->bindValue($paramIdx++, $p);
+    }
+    $stmtHistory->bindValue($paramIdx++, $limit, PDO::PARAM_INT);
+    $stmtHistory->bindValue($paramIdx++, $offsetHistory, PDO::PARAM_INT);
+    $stmtHistory->execute();
+    $history_list = $stmtHistory->fetchAll(PDO::FETCH_ASSOC);
 }
+$stat_total_material = count($materials);
+$stat_total_vendor = count($vendors);
+$stat_stok_tersedia = 0;
+$stat_dpb_aktif = 0;
+$stat_k3_aktif = 0;
+$stat_k7_aktif = 0;
+$stat_material_pending = 0;
+
+$chart_dpb = array_fill(1, 12, 0);
+$chart_k3 = array_fill(1, 12, 0);
+$chart_k7 = array_fill(1, 12, 0);
+$top_pending_materials = [];
+$detail_pending = [];
+$rekap_pending = [];
+
+if ($is_admin) {
+    // Stok Tersedia
+    $stmt = $db->query("SELECT SUM(stock) FROM materials");
+    $val = $stmt->fetchColumn();
+    $stat_stok_tersedia = $val !== null ? (int)$val : 0;
+
+    // DPB Aktif
+    $stmt = $db->query("SELECT COUNT(*) FROM dpb_transactions WHERE status = 'aktif' OR status = 'belum_jalan'");
+    $stat_dpb_aktif = (int)$stmt->fetchColumn();
+
+    // K3 Aktif
+    $stmt = $db->query("SELECT COUNT(*) FROM k3_transactions WHERE status = 'aktif' OR status = 'belum_jalan'");
+    $stat_k3_aktif = (int)$stmt->fetchColumn();
+
+    // K7 Aktif
+    $stmt = $db->query("SELECT COUNT(*) FROM k7_transactions WHERE status = 'aktif' OR status = 'belum_jalan'");
+    $stat_k7_aktif = (int)$stmt->fetchColumn();
+
+    // Material Pending (Jumlah baris permintaan yang pending)
+    $stmt = $db->query("
+        SELECT COUNT(*) FROM dpb_items di 
+        JOIN dpb_transactions d ON di.dpb_id = d.id 
+        WHERE d.status IN ('aktif', 'belum_jalan') AND di.quantity_requested > di.quantity_received
+    ");
+    $stat_material_pending = (int)$stmt->fetchColumn();
+
+    // Data Chart - Tren Bulanan
+    $currentYearFull = date('Y');
+    
+    $stmt = $db->prepare("
+        SELECT EXTRACT(MONTH FROM tanggal_diminta) AS bln, COUNT(*) AS count 
+        FROM dpb_transactions 
+        WHERE EXTRACT(YEAR FROM tanggal_diminta) = ?
+        GROUP BY bln ORDER BY bln
+    ");
+    $stmt->execute([$currentYearFull]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $chart_dpb[(int)$row['bln']] = (int)$row['count'];
+    }
+
+    $stmt = $db->prepare("
+        SELECT EXTRACT(MONTH FROM tanggal_diminta) AS bln, COUNT(*) AS count 
+        FROM k3_transactions 
+        WHERE EXTRACT(YEAR FROM tanggal_diminta) = ?
+        GROUP BY bln ORDER BY bln
+    ");
+    $stmt->execute([$currentYearFull]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $chart_k3[(int)$row['bln']] = (int)$row['count'];
+    }
+
+    $stmt = $db->prepare("
+        SELECT EXTRACT(MONTH FROM tanggal_diminta) AS bln, COUNT(*) AS count 
+        FROM k7_transactions 
+        WHERE EXTRACT(YEAR FROM tanggal_diminta) = ?
+        GROUP BY bln ORDER BY bln
+    ");
+    $stmt->execute([$currentYearFull]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $chart_k7[(int)$row['bln']] = (int)$row['count'];
+    }
+
+    // Data Chart - Top 5 Material Pending
+    $stmt = $db->query("
+        SELECT 
+            m.name AS material_name,
+            SUM(di.quantity_requested - di.quantity_received) AS total_pending
+        FROM dpb_items di
+        JOIN dpb_transactions d ON di.dpb_id = d.id
+        LEFT JOIN materials m ON di.material_id = m.id
+        WHERE d.status IN ('aktif', 'belum_jalan')
+          AND di.quantity_requested > di.quantity_received
+        GROUP BY m.name
+        ORDER BY total_pending DESC, m.name ASC
+        LIMIT 5
+    ");
+    $top_pending_materials = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Data Halaman Material Pending (Tabel 1 & Tabel 2)
+    if ($page === 'material_pending') {
+        $stmt = $db->query("
+            SELECT 
+                m.name AS material_name,
+                (di.quantity_requested - di.quantity_received) AS jumlah_pending,
+                v.name AS vendor_name,
+                v.address AS vendor_address
+            FROM dpb_items di
+            JOIN dpb_transactions d ON di.dpb_id = d.id
+            JOIN vendors v ON d.vendor_id = v.id
+            LEFT JOIN materials m ON di.material_id = m.id
+            WHERE d.status IN ('aktif', 'belum_jalan')
+              AND di.quantity_requested > di.quantity_received
+            ORDER BY v.name ASC, m.name ASC
+        ");
+        $detail_pending = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $stmt = $db->query("
+            SELECT 
+                m.name AS material_name,
+                SUM(di.quantity_requested - di.quantity_received) AS total_pending
+            FROM dpb_items di
+            JOIN dpb_transactions d ON di.dpb_id = d.id
+            LEFT JOIN materials m ON di.material_id = m.id
+            WHERE d.status IN ('aktif', 'belum_jalan')
+              AND di.quantity_requested > di.quantity_received
+            GROUP BY m.name
+            ORDER BY total_pending DESC, m.name ASC
+        ");
+        $rekap_pending = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+} elseif ($is_gudang2) {
+    // DPB Aktif Gudang (Global)
+    $stmt = $db->query("SELECT COUNT(*) FROM dpb_transactions WHERE status = 'aktif' OR status = 'belum_jalan'");
+    $stat_dpb_aktif = (int)$stmt->fetchColumn();
+
+    // K3 Aktif Gudang (Global)
+    $stmt = $db->query("SELECT COUNT(*) FROM k3_transactions WHERE status = 'aktif' OR status = 'belum_jalan'");
+    $stat_k3_aktif = (int)$stmt->fetchColumn();
+
+    // K7 Aktif Gudang (Global)
+    $stmt = $db->query("SELECT COUNT(*) FROM k7_transactions WHERE status = 'aktif' OR status = 'belum_jalan'");
+    $stat_k7_aktif = (int)$stmt->fetchColumn();
+} elseif ($is_vendor) {
+    $vendorId = currentVendorId();
+
+    // 1. DPB Aktif Vendor
+    $stmt = $db->prepare("SELECT COUNT(*) FROM dpb_transactions WHERE vendor_id = ? AND status IN ('belum_jalan', 'aktif', 'menunggu_persetujuan')");
+    $stmt->execute([$vendorId]);
+    $stat_dpb_aktif = (int)$stmt->fetchColumn();
+
+    // 2. K3 Aktif Vendor
+    $stmt = $db->prepare("SELECT COUNT(*) FROM k3_transactions WHERE vendor_id = ? AND status IN ('belum_jalan', 'aktif')");
+    $stmt->execute([$vendorId]);
+    $stat_k3_aktif = (int)$stmt->fetchColumn();
+
+    // 3. K7 Aktif Vendor
+    $stmt = $db->prepare("SELECT COUNT(*) FROM k7_transactions WHERE vendor_id = ? AND status IN ('belum_jalan', 'aktif')");
+    $stmt->execute([$vendorId]);
+    $stat_k7_aktif = (int)$stmt->fetchColumn();
+
+    // 4. Material Pending Vendor (jumlah baris material yang pending)
+    $stmt = $db->prepare("
+        SELECT COUNT(*) FROM dpb_items di 
+        JOIN dpb_transactions d ON di.dpb_id = d.id 
+        WHERE d.vendor_id = ? 
+          AND d.status IN ('aktif', 'belum_jalan') 
+          AND di.quantity_requested > di.quantity_received
+    ");
+    $stmt->execute([$vendorId]);
+    $stat_material_pending = (int)$stmt->fetchColumn();
+
+    // 5. Data Chart - Tren Bulanan Vendor
+    $currentYearFull = date('Y');
+    
+    $stmt = $db->prepare("
+        SELECT EXTRACT(MONTH FROM tanggal_diminta) AS bln, COUNT(*) AS count 
+        FROM dpb_transactions 
+        WHERE vendor_id = ? AND EXTRACT(YEAR FROM tanggal_diminta) = ?
+        GROUP BY bln ORDER BY bln
+    ");
+    $stmt->execute([$vendorId, $currentYearFull]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $chart_dpb[(int)$row['bln']] = (int)$row['count'];
+    }
+
+    $stmt = $db->prepare("
+        SELECT EXTRACT(MONTH FROM tanggal_diminta) AS bln, COUNT(*) AS count 
+        FROM k3_transactions 
+        WHERE vendor_id = ? AND EXTRACT(YEAR FROM tanggal_diminta) = ?
+        GROUP BY bln ORDER BY bln
+    ");
+    $stmt->execute([$vendorId, $currentYearFull]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $chart_k3[(int)$row['bln']] = (int)$row['count'];
+    }
+
+    $stmt = $db->prepare("
+        SELECT EXTRACT(MONTH FROM tanggal_diminta) AS bln, COUNT(*) AS count 
+        FROM k7_transactions 
+        WHERE vendor_id = ? AND EXTRACT(YEAR FROM tanggal_diminta) = ?
+        GROUP BY bln ORDER BY bln
+    ");
+    $stmt->execute([$vendorId, $currentYearFull]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $chart_k7[(int)$row['bln']] = (int)$row['count'];
+    }
+
+    // 6. Data Chart - Top 5 Material Terbanyak Diajukan (kuantitas)
+    $stmt = $db->prepare("
+        SELECT 
+            m.name AS material_name,
+            SUM(di.quantity_requested) AS total_requested
+        FROM dpb_items di
+        JOIN dpb_transactions d ON di.dpb_id = d.id
+        LEFT JOIN materials m ON di.material_id = m.id
+        WHERE d.vendor_id = ?
+        GROUP BY m.name
+        ORDER BY total_requested DESC, m.name ASC
+        LIMIT 5
+    ");
+    $stmt->execute([$vendorId]);
+    $top_requested_materials = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Data Halaman Material Pending (Tabel 1 & Tabel 2)
+    if ($page === 'material_pending') {
+        $stmt = $db->prepare("
+            SELECT 
+                m.name AS material_name,
+                (di.quantity_requested - di.quantity_received) AS jumlah_pending,
+                v.name AS vendor_name,
+                v.address AS vendor_address
+            FROM dpb_items di
+            JOIN dpb_transactions d ON di.dpb_id = d.id
+            JOIN vendors v ON d.vendor_id = v.id
+            LEFT JOIN materials m ON di.material_id = m.id
+            WHERE d.vendor_id = ?
+              AND d.status IN ('aktif', 'belum_jalan')
+              AND di.quantity_requested > di.quantity_received
+            ORDER BY v.name ASC, m.name ASC
+        ");
+        $stmt->execute([$vendorId]);
+        $detail_pending = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $stmt = $db->prepare("
+            SELECT 
+                m.name AS material_name,
+                SUM(di.quantity_requested - di.quantity_received) AS total_pending
+            FROM dpb_items di
+            JOIN dpb_transactions d ON di.dpb_id = d.id
+            LEFT JOIN materials m ON di.material_id = m.id
+            WHERE d.vendor_id = ?
+              AND d.status IN ('aktif', 'belum_jalan')
+              AND di.quantity_requested > di.quantity_received
+            GROUP BY m.name
+            ORDER BY total_pending DESC, m.name ASC
+        ");
+        $stmt->execute([$vendorId]);
+        $rekap_pending = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+}
+
+    // Data untuk Menu Vendor Admin
+    if ($page === 'vendor') {
+        // Summary KPI
+        $stmt = $db->query("SELECT COUNT(*) FROM vendors");
+        $stat_v_total = (int)$stmt->fetchColumn();
+
+        $stmt = $db->query("SELECT COUNT(*) FROM vendors WHERE status = 'aktif'");
+        $stat_v_aktif = (int)$stmt->fetchColumn();
+
+        $stmt = $db->query("SELECT COUNT(*) FROM vendors WHERE status = 'nonaktif'");
+        $stat_v_nonaktif = (int)$stmt->fetchColumn();
+
+        $stmt = $db->query("SELECT COUNT(*) FROM vendor_applications WHERE status = 'Menunggu Persetujuan'");
+        $stat_v_pending = (int)$stmt->fetchColumn();
+
+        // 1. Pengajuan Vendor List
+        $stmt = $db->query("
+            SELECT * FROM vendor_applications 
+            ORDER BY (CASE WHEN status = 'Menunggu Persetujuan' THEN 0 ELSE 1 END), created_at DESC
+        ");
+        $all_applications = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Pagination Pengajuan Vendor
+        $appPage = isset($_GET['apage']) ? max(1, (int)$_GET['apage']) : 1;
+        $limit = 10;
+        $totalAppRows = count($all_applications);
+        $totalAppPages = ceil($totalAppRows / $limit);
+        $paged_applications = array_slice($all_applications, ($appPage - 1) * $limit, $limit);
+
+        // 2. Daftar Vendor List
+        $stmt = $db->query("SELECT * FROM vendors ORDER BY name ASC");
+        $all_vendors = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Pagination Vendor terdaftar
+        $vendorPage = isset($_GET['vpage']) ? max(1, (int)$_GET['vpage']) : 1;
+        $totalVendorRows = count($all_vendors);
+        $totalVendorPages = ceil($totalVendorRows / $limit);
+        $paged_vendors = array_slice($all_vendors, ($vendorPage - 1) * $limit, $limit);
+    }
+    
+    // Data untuk Menu Material Admin
+    if ($page === 'material') {
+        $stat_m_total_jenis = count($materials);
+        
+        $stmt = $db->query("SELECT SUM(stock) FROM materials");
+        $val = $stmt->fetchColumn();
+        $stat_m_total_stok = $val !== null ? (int)$val : 0;
+        
+        $stmt = $db->query("SELECT COUNT(*) FROM materials WHERE stock < 10");
+        $stat_m_stok_rendah = (int)$stmt->fetchColumn();
+        
+        $stat_m_pending = $stat_material_pending;
+        
+        $stmt = $db->query("
+            SELECT 
+                m.name AS material_name,
+                m.norm AS material_norm,
+                (di.quantity_requested - di.quantity_received) AS jumlah_pending,
+                v.name AS vendor_name
+            FROM dpb_items di
+            JOIN dpb_transactions d ON di.dpb_id = d.id
+            JOIN vendors v ON d.vendor_id = v.id
+            LEFT JOIN materials m ON di.material_id = m.id
+            WHERE d.status IN ('aktif', 'belum_jalan')
+              AND di.quantity_requested > di.quantity_received
+            ORDER BY v.name ASC, m.name ASC
+        ");
+        $material_pending_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -258,8 +943,148 @@ if ($page === 'riwayat' && $is_vendor) {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="stylesheet" href="css/style.css">
 </head>
-<body>
+<body<?= ($is_admin || $is_vendor || $is_gudang2) ? ' class="adm-body"' : '' ?>>
 
+<?php if ($is_admin || $is_vendor || $is_gudang2): ?>
+<!-- =====================================================
+     VOLTA SYSTEM LAYOUT — Sidebar + Topbar
+     ===================================================== -->
+<div class="adm-layout" id="admLayout">
+
+    <!-- ---- SIDEBAR ---- -->
+    <aside class="adm-sidebar" id="admSidebar">
+
+        <!-- Brand -->
+        <a href="?page=home" class="adm-brand">
+            <img src="images/logo.png" alt="PLN Logo">
+            <span class="adm-brand-text">VOLTA</span>
+        </a>
+
+        <!-- Unit Info (non-clickable) -->
+        <div class="adm-unit-info">
+            <p class="adm-unit-name">PT PLN (Persero)</p>
+            <p class="adm-unit-sub">UP3 Malang</p>
+        </div>
+
+<!-- MODAL IMPORT MATERIAL -->
+<div id="materialImportModal" class="modal">
+    <div class="modal-content" style="max-width: 600px;">
+        <span class="close" onclick="closeImportModal()">&times;</span>
+        <h2 style="color:#0b2b4a;"><i class="fas fa-file-upload"></i> Import Data Material (CSV)</h2>
+        
+        <div id="importUploadArea" style="border: 2px dashed #cbd5e1; border-radius: 16px; padding: 2.5rem 1.5rem; text-align: center; background: #f8fafc; cursor: pointer; margin-top: 1.5rem; transition: border-color 0.2s;" onclick="triggerImportFileSelect()">
+            <i class="fas fa-cloud-upload-alt" style="font-size: 3rem; color: #64748b; margin-bottom: 1rem; display: block;"></i>
+            <span style="font-size: 1rem; font-weight: 600; color: #334155; display: block; margin-bottom: 0.25rem;">Pilih berkas Excel / CSV untuk diunggah</span>
+            <span style="font-size: 0.85rem; color: #64748b;">Maksimal ukuran file 5MB. Format .xlsx, .xls, atau .csv</span>
+            <input type="file" id="importFileInput" accept=".csv, .xlsx, .xls" style="display: none;" onchange="handleImportFileSelect(event)">
+        </div>
+
+        <!-- Preview & Status Block -->
+        <div id="importPreviewBlock" style="display: none; margin-top: 1.5rem;">
+            <div id="importStatusAlert" class="alert-success" style="margin-bottom: 1rem; display: none;"></div>
+            <div id="importErrorList" class="alert-danger" style="margin-bottom: 1rem; max-height: 150px; overflow-y: auto; font-size: 0.85rem; display: none; text-align: left; padding: 1rem; border-radius: 12px;"></div>
+            
+            <div id="importTableContainer" style="display: none;">
+                <h4 style="color:#0b2b4a; margin-top: 0; margin-bottom: 0.5rem;"><i class="fas fa-eye"></i> Preview 5 Data Pertama</h4>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Nama Material</th>
+                                <th>Normalisasi</th>
+                                <th>Satuan</th>
+                                <th>Jumlah</th>
+                            </tr>
+                        </thead>
+                        <tbody id="importPreviewTbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div style="margin-top: 1.5rem; display: flex; gap: 8px; justify-content: flex-end;">
+                <button type="button" id="btnConfirmImport" class="btn-success" onclick="confirmImportData()" disabled>Konfirmasi Import</button>
+                <button type="button" class="btn-info" onclick="resetImportModal()">Pilih File Lain</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+        <!-- Navigation -->
+        <nav class="adm-nav">
+            <a href="?page=home"  class="adm-nav-item <?= $page === 'home'    ? 'active' : '' ?>">
+                <i class="fas fa-home"></i> <span>Dashboard</span>
+            </a>
+            <?php if (!$is_gudang2): ?>
+            <a href="?page=vendor" class="adm-nav-item <?= $page === 'vendor'  ? 'active' : '' ?>">
+                <i class="fas fa-truck"></i> <span>Vendor</span>
+            </a>
+            <?php endif; ?>
+            <?php if ($is_admin): ?>
+            <a href="?page=material" class="adm-nav-item <?= $page === 'material' ? 'active' : '' ?>">
+                <i class="fas fa-boxes"></i> <span>Material</span>
+            </a>
+            <?php endif; ?>
+            <a href="?page=dpb" class="adm-nav-item <?= $page === 'dpb'     ? 'active' : '' ?>">
+                <i class="fas fa-clipboard-list"></i> <span>DPB</span>
+            </a>
+            <a href="?page=k3" class="adm-nav-item <?= $page === 'k3'      ? 'active' : '' ?>">
+                <i class="fas fa-undo"></i> <span>K3</span>
+            </a>
+            <a href="?page=k7" class="adm-nav-item <?= $page === 'k7'      ? 'active' : '' ?>">
+                <i class="fas fa-recycle"></i> <span>K7</span>
+            </a>
+            <?php if ($is_vendor): ?>
+            <a href="#" onclick="showFaq()" class="adm-nav-item">
+                <i class="fas fa-question-circle"></i> <span>FAQ</span>
+            </a>
+            <?php endif; ?>
+        </nav>
+
+        <!-- Footer (Logout Only) -->
+        <div class="adm-sidebar-footer" style="margin-top: auto;">
+            <!-- Keluar -->
+            <div class="adm-logout-wrap">
+                <a href="logout.php" class="adm-logout-btn">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Keluar</span>
+                </a>
+            </div>
+        </div>
+
+    </aside>
+    <!-- ---- END SIDEBAR ---- -->
+
+    <!-- ---- MAIN AREA ---- -->
+    <div class="adm-main" id="admMain">
+
+        <!-- Top Header Bar -->
+        <header class="adm-topbar" id="admTopbar">
+            <div class="adm-topbar-left">
+                <button class="adm-sidebar-toggle" id="admSidebarToggle" onclick="admToggleSidebar()" title="Toggle Sidebar">
+                    <i class="fas fa-bars"></i>
+                </button>
+            </div>
+            <div class="adm-topbar-right">
+                <button class="adm-notif-btn" title="Notifikasi">
+                    <i class="fas fa-bell"></i>
+                    <span class="adm-notif-badge">!</span>
+                </button>
+                <div class="adm-topbar-user">
+                    <span class="adm-topbar-username"><?= htmlspecialchars($_SESSION['user_name'] ?? 'VOLTA User') ?></span>
+                    <span class="role-badge role-<?= $_SESSION['user_role'] ?? 'vendor' ?>"><?= $is_admin ? 'Admin' : ($is_gudang2 ? 'Gudang' : 'Vendor') ?></span>
+                    <div class="adm-topbar-avatar">
+                        <i class="fas fa-user"></i>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Page Content -->
+        <div class="adm-content">
+<?php else: ?>
+<!-- =====================================================
+     VENDOR / GUEST LAYOUT — Header horizontal lama
+     ===================================================== -->
 <header class="site-header">
     <div class="logo-area">
         <img src="images/logo.png" alt="PLN Logo">
@@ -268,31 +1093,21 @@ if ($page === 'riwayat' && $is_vendor) {
 
     <div class="nav-links">
         <a href="?page=home" class="<?= $page === 'home' ? 'active' : '' ?>"><i class="fas fa-home"></i> Home</a>
-        <?php if (!$is_gudang2): ?>
         <a href="?page=vendor" class="<?= $page === 'vendor' ? 'active' : '' ?>"><i class="fas fa-truck"></i> Vendor</a>
-        <?php endif; ?>
-        <?php if (!$is_vendor && !$is_gudang2): ?>
-        <a href="?page=material" class="<?= $page === 'material' ? 'active' : '' ?>"><i class="fas fa-cubes"></i> Material</a>
-        <?php endif; ?>
         <a href="?page=dpb" class="<?= $page === 'dpb' ? 'active' : '' ?>"><i class="fas fa-clipboard-list"></i> DPB</a>
         <a href="?page=k3" class="<?= $page === 'k3' ? 'active' : '' ?>"><i class="fas fa-undo"></i> K3</a>
         <a href="?page=k7" class="<?= $page === 'k7' ? 'active' : '' ?>"><i class="fas fa-recycle"></i> K7</a>
-        <?php if ($is_vendor || $is_admin): ?>
+        <?php if ($is_vendor || $is_logged_in): ?>
         <a href="?page=riwayat" class="<?= $page === 'riwayat' ? 'active' : '' ?>"><i class="fas fa-history"></i> Riwayat</a>
         <?php endif; ?>
-        <?php if ($is_admin): ?>
-        <a href="?page=mdu" class="<?= $page === 'mdu' ? 'active' : '' ?>"><i class="fas fa-tasks"></i> Dafung</a>
-        <?php endif; ?>
-        <?php if (!$is_admin): ?>
         <a href="#" onclick="showFaq()"><i class="fas fa-question-circle"></i> FAQ</a>
-        <?php endif; ?>
     </div>
 
     <div class="auth-bar">
         <?php if ($is_logged_in): ?>
             <span class="user-info">
                 <i class="fas fa-user"></i> <?= htmlspecialchars($_SESSION['user_name']) ?>
-                <span class="role-badge role-<?= $_SESSION['user_role'] ?>"><?= $is_admin ? 'Admin' : ($is_gudang2 ? 'Admin Gudang 2' : 'Vendor') ?></span>
+                <span class="role-badge role-<?= $_SESSION['user_role'] ?>">Vendor</span>
             </span>
             <a href="logout.php" class="btn btn-outline"><i class="fas fa-sign-out-alt"></i> Keluar</a>
         <?php else: ?>
@@ -305,13 +1120,30 @@ if ($page === 'riwayat' && $is_vendor) {
 <section class="hero-banner">
     <img src="images/hero.png" alt="Gudang &amp; Distribusi Material PLN">
     <div class="hero-overlay">
-        <span class="hero-tag"><i class="fas fa-bolt"></i> PT PLN (persero) - UP 3 Malang</span>
+        <span class="hero-tag"><i class="fas fa-bolt"></i> PT PLN (persero) - UP3 Malang</span>
         <h1>Distribusi Material</h1>
         <p>Kelola stok material, data vendor, dan monitoring DPB dalam satu sistem terintegrasi.</p>
     </div>
 </section>
+<?php endif; ?>
 
 <div class="app-wrapper">
+    <?php if ($is_admin || $is_vendor || $is_gudang2): ?>
+    <section class="hero-banner">
+        <img src="images/hero.png" alt="Gudang &amp; Distribusi Material PLN">
+        <div class="hero-overlay">
+            <span class="hero-tag"><i class="fas fa-bolt"></i> PT PLN (persero) - UP3 Malang</span>
+            <h1>Distribusi Material</h1>
+            <?php if ($is_admin): ?>
+            <p>Kelola stok material, data vendor, dan monitoring DPB dalam satu sistem terintegrasi.</p>
+            <?php elseif ($is_gudang2): ?>
+            <p>Cari nomor TUG, lihat status, dan cetak dokumen DPB / K3 / K7 untuk operasional gudang.</p>
+            <?php else: ?>
+            <p>Ajukan permintaan material, cetak DPB, dan pantau status pengajuan Anda di sini.</p>
+            <?php endif; ?>
+        </div>
+    </section>
+    <?php endif; ?>
     <?php if (!$openModal && isset($_SESSION['success'])): ?>
         <div class="alert-success"><?= htmlspecialchars($_SESSION['success']); unset($_SESSION['success']); ?></div>
     <?php endif; ?>
@@ -322,162 +1154,422 @@ if ($page === 'riwayat' && $is_vendor) {
     <div id="dynamicContent">
         <?php if ($page === 'home'): ?>
             <div id="homeSection">
+                <?php if ($is_admin || $is_vendor || $is_gudang2): ?>
+                <div class="adm-kpi-grid">
+                    <!-- DPB Aktif -->
+                    <div class="adm-kpi-card clickable-kpi-card" onclick="location.href='?page=dpb'" style="cursor: pointer;">
+                        <div class="adm-kpi-content">
+                            <span class="adm-kpi-number"><?= number_format($stat_dpb_aktif, 0, ',', '.') ?></span>
+                            <span class="adm-kpi-label">DPB Aktif</span>
+                        </div>
+                        <div class="adm-kpi-icon-wrap" style="background-color: #e3f7ec; color: #1e8e5a;">
+                            <i class="fas fa-clipboard-list"></i>
+                        </div>
+                    </div>
+                    <!-- K3 Aktif -->
+                    <div class="adm-kpi-card clickable-kpi-card" onclick="location.href='?page=k3'" style="cursor: pointer;">
+                        <div class="adm-kpi-content">
+                            <span class="adm-kpi-number"><?= number_format($stat_k3_aktif, 0, ',', '.') ?></span>
+                            <span class="adm-kpi-label">K3 Aktif</span>
+                        </div>
+                        <div class="adm-kpi-icon-wrap" style="background-color: #fff6dd; color: #b78a00;">
+                            <i class="fas fa-undo"></i>
+                        </div>
+                    </div>
+                    <!-- K7 Aktif -->
+                    <div class="adm-kpi-card clickable-kpi-card" onclick="location.href='?page=k7'" style="cursor: pointer;">
+                        <div class="adm-kpi-content">
+                            <span class="adm-kpi-number"><?= number_format($stat_k7_aktif, 0, ',', '.') ?></span>
+                            <span class="adm-kpi-label">K7 Aktif</span>
+                        </div>
+                        <div class="adm-kpi-icon-wrap" style="background-color: #f7e6ff; color: #8e1eff;">
+                            <i class="fas fa-recycle"></i>
+                        </div>
+                    </div>
+                    <!-- Material Pending (Admin/Vendor Only) -->
+                    <?php if (!$is_gudang2): ?>
+                    <div class="adm-kpi-card clickable-kpi-card" onclick="location.href='?page=material_pending'" style="cursor: pointer;">
+                        <div class="adm-kpi-content">
+                            <span class="adm-kpi-number"><?= number_format($stat_material_pending, 0, ',', '.') ?></span>
+                            <span class="adm-kpi-label">Material Pending</span>
+                        </div>
+                        <div class="adm-kpi-icon-wrap" style="background-color: #e6f7f8; color: #14828a;">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+                </div>
+
+                <?php if (!$is_gudang2): ?>
+                <!-- Grafik Dashboard -->
+                <div class="adm-chart-row" style="display: flex; gap: 24px; margin-top: 32px; flex-wrap: wrap;">
+                    <!-- Grafik 1: Tren Aktivitas Bulanan -->
+                    <div class="adm-chart-card" style="flex: 1.5; min-width: 320px; background: white; padding: 24px; border-radius: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.02); border: 1px solid rgba(0,0,0,0.05);">
+                        <h4 style="margin: 0 0 16px 0; color: #0b2b4a; font-size: 16px; font-weight: 600;"><i class="fas fa-chart-line" style="color: #14828a; margin-right: 8px;"></i> Tren Aktivitas Transaksi Bulanan (<?= date('Y') ?>)</h4>
+                        <div style="position: relative; height: 320px;">
+                            <canvas id="monthlyTrendChart"></canvas>
+                        </div>
+                    </div>
+                    <!-- Grafik 2: Top 5 Material Pending (Admin) atau Terbanyak Diajukan (Vendor) -->
+                    <div class="adm-chart-card" style="flex: 1; min-width: 320px; background: white; padding: 24px; border-radius: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.02); border: 1px solid rgba(0,0,0,0.05);">
+                        <?php if ($is_admin): ?>
+                            <h4 style="margin: 0 0 16px 0; color: #0b2b4a; font-size: 16px; font-weight: 600;"><i class="fas fa-chart-bar" style="color: #b78a00; margin-right: 8px;"></i> Top 5 Material Pending Terbanyak</h4>
+                            <div style="position: relative; height: 320px;">
+                                <canvas id="topPendingChart"></canvas>
+                            </div>
+                        <?php else: ?>
+                            <h4 style="margin: 0 0 16px 0; color: #0b2b4a; font-size: 16px; font-weight: 600;"><i class="fas fa-chart-bar" style="color: #1e8e5a; margin-right: 8px;"></i> Top 5 Material Terbanyak Diajukan (Kuantitas)</h4>
+                            <div style="position: relative; height: 320px;">
+                                <canvas id="requestedMaterialsChart"></canvas>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php else: ?>
                 <div class="hero-card">
                     <h1 style="color: #0b2b4a; font-weight: 700; font-size: 2.2rem;"><i class="fas fa-warehouse"></i> VOLTA PLN</h1>
                     <p style="color: #1f4460; max-width: 600px;">
-                        <?php if ($is_admin): ?>
-                            Kelola material dan vendor, pantau DPB, serta buat surat jalan dengan mudah.
-                        <?php elseif ($is_vendor): ?>
-                            Ajukan permintaan material, cetak DPB, dan pantau status pengajuan Anda di sini.
-                        <?php elseif ($is_gudang2): ?>
-                            Cari nomor TUG di menu DPB, K3, atau K7 untuk melihat &amp; mengelola datanya, lalu cetak surat jalan / bon sebelum diserahkan.
-                        <?php else: ?>
-                            Masuk atau daftar sebagai vendor untuk mulai mengajukan permintaan material.
-                        <?php endif; ?>
+                        Cari nomor TUG di menu DPB, K3, atau K7 untuk melihat &amp; mengelola datanya, lalu cetak surat jalan / bon sebelum diserahkan.
                     </p>
                     <div style="display: flex; flex-wrap: wrap; gap: 0.8rem; margin-top: 1.2rem;">
-                        <?php if ($is_admin || $is_vendor): ?>
-                            <a href="?page=material" class="btn-success" style="text-decoration:none; display:inline-block;"><i class="fas fa-plus-circle"></i> Input Material</a>
-                            <a href="?page=vendor" class="btn-info" style="text-decoration:none; display:inline-block;"><i class="fas fa-building"></i> Kelola Vendor</a>
-                        <?php endif; ?>
-                        <?php if ($is_gudang2): ?>
-                            <a href="?page=dpb" class="btn-warning" style="text-decoration:none; display:inline-block;"><i class="fas fa-file-pdf"></i> Cetak Surat Jalan (Material)</a>
-                            <a href="?page=dpb" class="btn-info" style="text-decoration:none; display:inline-block;"><i class="fas fa-clipboard-list"></i> DPB</a>
-                            <a href="?page=k3" class="btn-info" style="text-decoration:none; display:inline-block;"><i class="fas fa-undo"></i> K3</a>
-                            <a href="?page=k7" class="btn-info" style="text-decoration:none; display:inline-block;"><i class="fas fa-recycle"></i> K7</a>
-                        <?php else: ?>
-                        <a href="?page=dpb" class="btn-warning" style="text-decoration:none; display:inline-block;"><i class="fas fa-print"></i> Monitoring DPB</a>
-                        <?php endif; ?>
+                        <a href="?page=dpb" class="btn-warning" style="text-decoration:none; display:inline-block;"><i class="fas fa-file-pdf"></i> Cetak Surat Jalan (Material)</a>
+                        <a href="?page=dpb" class="btn-info" style="text-decoration:none; display:inline-block;"><i class="fas fa-clipboard-list"></i> DPB</a>
+                        <a href="?page=k3" class="btn-info" style="text-decoration:none; display:inline-block;"><i class="fas fa-undo"></i> K3</a>
+                        <a href="?page=k7" class="btn-info" style="text-decoration:none; display:inline-block;"><i class="fas fa-recycle"></i> K7</a>
                     </div>
                 </div>
-
-                <div class="card-grid">
-                    <div class="card">
-                        <h3><i class="fas fa-boxes"></i> Material</h3>
-                        <p>Total <span id="materialCount"><?= count($materials) ?></span> item terdaftar.</p>
-                    </div>
-                    <div class="card">
-                        <h3><i class="fas fa-truck"></i> Vendor</h3>
-                        <p>Total <span id="vendorCount"><?= count($vendors) ?></span> vendor.</p>
-                    </div>
-                    <div class="card">
-                        <h3><i class="fas fa-file-pdf"></i> Surat Jalan</h3>
-                        <p>Cetak / PDF dari hasil monitoring.</p>
-                    </div>
-                </div>
+                <?php endif; ?>
+                <?php endif; ?>
             </div>
         <?php elseif ($page === 'vendor'): ?>
             <div id="vendorSection">
-                <div class="card">
-                    <h3><i class="fas fa-building"></i> Daftar Vendor</h3>
+                <?php if ($is_admin): ?>
+                    <!-- Summary / KPI Cards -->
+                    <div class="adm-kpi-grid" style="margin-bottom: 32px;">
+                        <div class="adm-kpi-card">
+                            <div class="adm-kpi-content">
+                                <span class="adm-kpi-number"><?= number_format($stat_v_total) ?></span>
+                                <span class="adm-kpi-label">Total Vendor</span>
+                            </div>
+                            <div class="adm-kpi-icon-wrap" style="background-color: #e3f7ec; color: #1e8e5a;">
+                                <i class="fas fa-building"></i>
+                            </div>
+                        </div>
+                        <div class="adm-kpi-card">
+                            <div class="adm-kpi-content">
+                                <span class="adm-kpi-number"><?= number_format($stat_v_aktif) ?></span>
+                                <span class="adm-kpi-label">Vendor Aktif</span>
+                            </div>
+                            <div class="adm-kpi-icon-wrap" style="background-color: #e6f7f8; color: #14828a;">
+                                <i class="fas fa-check-circle"></i>
+                            </div>
+                        </div>
+                        <div class="adm-kpi-card">
+                            <div class="adm-kpi-content">
+                                <span class="adm-kpi-number"><?= number_format($stat_v_nonaktif) ?></span>
+                                <span class="adm-kpi-label">Vendor Nonaktif</span>
+                            </div>
+                            <div class="adm-kpi-icon-wrap" style="background-color: #fff0f0; color: #e11d48;">
+                                <i class="fas fa-ban"></i>
+                            </div>
+                        </div>
+                        <div class="adm-kpi-card">
+                            <div class="adm-kpi-content">
+                                <span class="adm-kpi-number"><?= number_format($stat_v_pending) ?></span>
+                                <span class="adm-kpi-label">Pengajuan Pending</span>
+                            </div>
+                            <div class="adm-kpi-icon-wrap" style="background-color: #fff6dd; color: #b78a00;">
+                                <i class="fas fa-clock"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SECTION 1: PENGAJUAN VENDOR -->
+                    <div class="card" style="margin-bottom: 32px;">
+                        <h3 style="color:#0b2b4a; margin-top:0; margin-bottom:1.5rem;"><i class="fas fa-clipboard-list" style="color: #b78a00; margin-right: 8px;"></i> Pengajuan Registrasi Vendor</h3>
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th style="width: 5%;">No</th>
+                                        <th>Nama PT</th>
+                                        <th>Email</th>
+                                        <th>Telepon</th>
+                                        <th>Tanggal Pengajuan</th>
+                                        <th>Status</th>
+                                        <th>Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (empty($paged_applications)): ?>
+                                        <tr>
+                                            <td colspan="7" style="text-align:center; color:#777; padding:2rem;">Tidak ada pengajuan vendor saat ini.</td>
+                                        </tr>
+                                    <?php else: ?>
+                                        <?php foreach ($paged_applications as $idx => $app): ?>
+                                            <tr>
+                                                <td><?= (($appPage - 1) * 10) + $idx + 1 ?></td>
+                                                <td><strong><?= htmlspecialchars($app['name']) ?></strong></td>
+                                                <td><?= htmlspecialchars($app['email']) ?></td>
+                                                <td><?= htmlspecialchars($app['phone'] ?: '-') ?></td>
+                                                <td><?= date('d M Y H:i', strtotime($app['created_at'])) ?></td>
+                                                <td>
+                                                    <?php if ($app['status'] === 'Menunggu Persetujuan'): ?>
+                                                        <span class="badge" style="background-color: #fff6dd; color: #b78a00; font-weight: 600; padding: 4px 8px; border-radius: 8px; font-size: 12px;"><i class="fas fa-clock"></i> Menunggu Persetujuan</span>
+                                                    <?php elseif ($app['status'] === 'Disetujui'): ?>
+                                                        <span class="badge" style="background-color: #e3f7ec; color: #1e8e5a; font-weight: 600; padding: 4px 8px; border-radius: 8px; font-size: 12px;"><i class="fas fa-check-circle"></i> Disetujui</span>
+                                                    <?php else: ?>
+                                                        <span class="badge" style="background-color: #fff0f0; color: #e11d48; font-weight: 600; padding: 4px 8px; border-radius: 8px; font-size: 12px;"><i class="fas fa-times-circle"></i> Ditolak</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td>
+                                                    <div style="display: flex; gap: 8px; align-items: center;">
+                                                        <button type="button" class="btn-info" onclick="showAppDetail(<?= htmlspecialchars(json_encode($app)) ?>)" style="padding: 0.3rem 0.8rem; font-size: 0.75rem; border-radius: 20px;">Detail</button>
+                                                        <?php if ($app['status'] === 'Menunggu Persetujuan'): ?>
+                                                            <a href="vendor.php?approve_app=<?= $app['id'] ?>" class="btn-success" onclick="return confirm('Setujui pengajuan vendor PT <?= htmlspecialchars(addslashes($app['name'])) ?>?')" style="padding: 0.3rem 0.8rem; font-size: 0.75rem; border-radius: 20px; text-decoration: none;">Setujui</a>
+                                                            <a href="vendor.php?reject_app=<?= $app['id'] ?>" class="btn-danger" onclick="return confirm('Tolak pengajuan vendor PT <?= htmlspecialchars(addslashes($app['name'])) ?>?')" style="padding: 0.3rem 0.8rem; font-size: 0.75rem; border-radius: 20px; text-decoration: none;">Tolak</a>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <?php if ($totalAppPages > 1): ?>
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 1rem; flex-wrap: wrap; gap: 12px;">
+                                <span style="font-size: 0.85rem; color: #555;">Menampilkan <?= (($appPage - 1) * 10) + 1 ?>–<?= min($appPage * 10, $totalAppRows) ?> dari <?= $totalAppRows ?> Pengajuan</span>
+                                <?= renderPhpPagination($appPage, $totalAppPages, 'apage') ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+
+                <!-- SECTION 2: DAFTAR VENDOR -->
+                <div class="card" style="margin-bottom: 32px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 12px;">
+                        <h3 style="color:#0b2b4a; margin: 0;"><i class="fas fa-building" style="color: #14828a; margin-right: 8px;"></i> Daftar Vendor Terdaftar</h3>
+                        <?php if ($is_admin): ?>
+                            <div style="display: flex; gap: 8px;">
+                                <a href="vendor.php?action=export" class="btn-warning" style="text-decoration:none; display:inline-block;"><i class="fas fa-file-csv"></i> Ekspor Vendor</a>
+                                <button type="button" class="btn-success" onclick="toggleAddVendorForm()"><i class="fas fa-plus"></i> Tambah Vendor Baru</button>
+                            </div>
+                        <?php endif; ?>
+                    </div>
 
                     <?php if ($is_admin): ?>
-                    <form method="POST" action="vendor.php" style="margin-bottom: 1.5rem;">
-                        <div class="flex-row">
-                            <div class="form-group">
-                                <label>Nama PT</label>
-                                <input type="text" name="vendor_name" placeholder="PT. ..." required>
+                    <!-- Form Tambah Vendor (Hidden by default, toggled via JS) -->
+                    <div id="addVendorFormBlock" class="card" style="display: none; border: 1px solid #dbe4ec; margin-bottom: 24px; background: #f8fafc; padding: 20px; border-radius: 16px;">
+                        <h4 style="color:#0b2b4a; margin-top:0; margin-bottom:1rem;"><i class="fas fa-plus-circle"></i> Form Tambah Vendor Baru</h4>
+                        <form method="POST" action="vendor.php">
+                            <div class="flex-row">
+                                <div class="form-group">
+                                    <label>Nama PT</label>
+                                    <input type="text" name="vendor_name" placeholder="PT. ..." required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Alamat</label>
+                                    <input type="text" name="vendor_address" placeholder="Alamat lengkap">
+                                </div>
                             </div>
-                            <div class="form-group">
-                                <label>Alamat</label>
-                                <input type="text" name="vendor_address" placeholder="Alamat lengkap">
+                            <div class="flex-row">
+                                <div class="form-group">
+                                    <label>Telepon</label>
+                                    <input type="text" name="vendor_phone" placeholder="08123456789">
+                                </div>
+                                <div class="form-group">
+                                    <label>Email (digunakan untuk login)</label>
+                                    <input type="email" name="vendor_email" placeholder="email@company.com" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Password (maks. 7 digit)</label>
+                                    <input type="password" name="vendor_password" placeholder="******" maxlength="7" required>
+                                </div>
                             </div>
-                        </div>
-                        <div class="flex-row">
-                            <div class="form-group">
-                                <label>Telepon</label>
-                                <input type="text" name="vendor_phone" placeholder="08123456789">
+                            <div style="margin-top:1.2rem; display: flex; gap: 8px;">
+                                <button type="submit" name="add_vendor" class="btn-success">Simpan &amp; Aktifkan</button>
+                                <button type="button" class="btn-info" onclick="toggleAddVendorForm()">Batal</button>
                             </div>
-                            <div class="form-group">
-                                <label>Email</label>
-                                <input type="email" name="vendor_email" placeholder="email@company.com">
-                            </div>
-                        </div>
-                        <p class="text-small">Data default di bawah ini otomatis dipakai untuk mengisi formulir Pengajuan DPB saat vendor ini dipilih.</p>
-                        <div class="flex-row">
-                            <div class="form-group">
-                                <label>No. SPK Default</label>
-                                <input type="text" name="vendor_spk" placeholder="0959.PJ/DAN...">
-                            </div>
-                            <div class="form-group">
-                                <label>Jenis Pekerjaan Default</label>
-                                <input type="text" name="vendor_jenis" placeholder="GKU / GKS / SUTR">
-                            </div>
-                        </div>
-                        <div class="flex-row">
-                            <div class="form-group">
-                                <label>IDPEL Default</label>
-                                <input type="text" name="vendor_idpel" placeholder="513...">
-                            </div>
-                            <div class="form-group">
-                                <label>Daya Default</label>
-                                <input type="text" name="vendor_daya" placeholder="R1 / 1300 VA">
-                            </div>
-                            <div class="form-group">
-                                <label>ULP Default</label>
-                                <input type="text" name="vendor_ulp" placeholder="ULP DINOYO">
-                            </div>
-                        </div>
-                        <div style="margin-top:1.2rem;">
-                            <button type="submit" name="add_vendor" class="btn-success">Tambah Vendor</button>
-                        </div>
-                    </form>
+                        </form>
+                    </div>
                     <?php elseif ($is_vendor): ?>
                         <div class="alert-success" style="padding:1rem; border-radius:10px; margin-bottom:1rem;">
                             <i class="fas fa-check-circle"></i> Anda terdaftar sebagai <strong><?= htmlspecialchars($my_vendor['name'] ?? '-') ?></strong>. Untuk mengubah data vendor, hubungi admin gudang PLN.
                         </div>
-                    <?php else: ?>
-                        <div class="alert-danger" style="padding:1rem; border-radius:10px; margin-bottom:1rem;">
-                            <i class="fas fa-lock"></i> Silakan <a href="#" onclick="showRegister();return false;">daftar sebagai vendor</a> atau login untuk mengajukan permintaan material.
-                        </div>
                     <?php endif; ?>
 
-                    <?php if (!$is_admin && !$is_vendor): ?>
-                    <p class="text-small" style="margin-top:-0.6rem; margin-bottom:0.8rem;">
-                        <i class="fas fa-lock"></i> Kolom Telepon &amp; Email hanya dapat dilihat oleh admin gudang PLN dan Vendor.
-                    </p>
-                    <?php endif; ?>
-                    <div style="display:flex; justify-content:flex-end; margin-bottom:0.8rem;">
+                    <div style="display:flex; justify-content:flex-end; margin-bottom:1rem;">
                         <div class="form-group" style="min-width:260px; margin-bottom:0;">
-                            <input type="text" id="vendorSearchInput" placeholder="Cari Vendor..." oninput="filterVendorTable()">
+                            <input type="text" id="vendorSearchInput" placeholder="Cari Vendor..." oninput="filterVendorTableLocal()" style="padding: 0.5rem 1rem; border-radius: 20px; border: 1px solid #ccc; font-size: 13px; width: 100%;">
                         </div>
                     </div>
+
                     <div class="table-wrap">
                         <table id="vendorTable">
                             <thead>
-                                <tr><th>#</th><th>Nama PT</th><th>Alamat</th><th>Telepon</th><th>Email</th><?php if ($is_admin): ?><th>Aksi</th><?php endif; ?></tr>
+                                <tr>
+                                    <th style="width: 5%;">No</th>
+                                    <th>Nama PT</th>
+                                    <th>Alamat</th>
+                                    <th>Telepon</th>
+                                    <th>Email</th>
+                                    <th>Status</th>
+                                    <?php if ($is_admin): ?><th>Aksi</th><?php endif; ?>
+                                </tr>
                             </thead>
                             <tbody>
-                                <?php foreach ($vendors as $i => $v): ?>
-                                <tr data-search="<?= htmlspecialchars(mb_strtolower($v['name'] . ' ' . ($v['address'] ?? ''))) ?>">
-                                    <td><?= $i + 1 ?></td>
-                                    <td><?= htmlspecialchars($v['name']) ?></td>
-                                    <td><?= htmlspecialchars($v['address'] ?? '-') ?></td>
-                                    <td>
+                                <?php
+                                $vendors_list = $is_admin ? $paged_vendors : $vendors;
+                                ?>
+                                <?php if (empty($vendors_list)): ?>
+                                    <tr>
+                                        <td colspan="7" style="text-align:center; color:#777; padding:2rem;">Tidak ada vendor terdaftar saat ini.</td>
+                                    </tr>
+                                <?php else: ?>
+                                    <?php foreach ($vendors_list as $i => $v): ?>
+                                    <tr data-search="<?= htmlspecialchars(mb_strtolower($v['name'] . ' ' . ($v['address'] ?? ''))) ?>">
+                                        <td><?= $is_admin ? (($vendorPage - 1) * 10) + $i + 1 : $i + 1 ?></td>
+                                        <td><strong><?= htmlspecialchars($v['name']) ?></strong></td>
+                                        <td><?= htmlspecialchars($v['address'] ?? '-') ?></td>
+                                        <td>
+                                            <?php if ($is_admin): ?>
+                                                <?= htmlspecialchars($v['phone'] ?? '-') ?>
+                                            <?php else: ?>
+                                                <span class="locked-cell"><i class="fas fa-lock"></i> Admin saja</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <?php if ($is_admin): ?>
+                                                <?= htmlspecialchars($v['email'] ?? '-') ?>
+                                            <?php else: ?>
+                                                <span class="locked-cell"><i class="fas fa-lock"></i> Admin saja</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <?php if (($v['status'] ?? 'aktif') === 'aktif'): ?>
+                                                <span class="badge" style="background-color: #e3f7ec; color: #1e8e5a; font-weight: 600; padding: 4px 8px; border-radius: 8px; font-size: 12px;"><i class="fas fa-check-circle"></i> Aktif</span>
+                                            <?php else: ?>
+                                                <span class="badge" style="background-color: #fff0f0; color: #e11d48; font-weight: 600; padding: 4px 8px; border-radius: 8px; font-size: 12px;"><i class="fas fa-ban"></i> Nonaktif</span>
+                                            <?php endif; ?>
+                                        </td>
                                         <?php if ($is_admin): ?>
-                                            <?= htmlspecialchars($v['phone'] ?? '-') ?>
-                                        <?php else: ?>
-                                            <span class="locked-cell"><i class="fas fa-lock"></i> Admin saja</span>
+                                        <td>
+                                            <div style="display:flex; gap:6px; align-items:center;">
+                                                <button type="button" class="btn-info" onclick="showVendorDetail(<?= htmlspecialchars(json_encode($v)) ?>)" style="padding:0.25rem 0.75rem; border-radius:20px; font-size:0.75rem;">Detail</button>
+                                                <button type="button" class="btn-warning" onclick="showVendorEdit(<?= htmlspecialchars(json_encode($v)) ?>)" style="padding:0.25rem 0.75rem; border-radius:20px; font-size:0.75rem; color:#fff;">Edit</button>
+                                                <?php if (($v['status'] ?? 'aktif') === 'aktif'): ?>
+                                                    <a href="vendor.php?deactivate=<?= $v['id'] ?>" class="btn-danger" onclick="return confirm('Nonaktifkan vendor <?= htmlspecialchars(addslashes($v['name'])) ?>?')" style="padding:0.25rem 0.75rem; border-radius:20px; text-decoration:none; font-size:0.75rem;">Nonaktifkan</a>
+                                                <?php else: ?>
+                                                    <a href="vendor.php?activate=<?= $v['id'] ?>" class="btn-success" onclick="return confirm('Aktifkan kembali vendor <?= htmlspecialchars(addslashes($v['name'])) ?>?')" style="padding:0.25rem 0.75rem; border-radius:20px; text-decoration:none; font-size:0.75rem;">Aktifkan</a>
+                                                <?php endif; ?>
+                                            </div>
+                                        </td>
                                         <?php endif; ?>
-                                    </td>
-                                    <td>
-                                        <?php if ($is_admin): ?>
-                                            <?= htmlspecialchars($v['email'] ?? '-') ?>
-                                        <?php else: ?>
-                                            <span class="locked-cell"><i class="fas fa-lock"></i> Admin saja</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <?php if ($is_admin): ?>
-                                    <td>
-                                        <a href="vendor.php?delete=<?= $v['id'] ?>&page=vendor" onclick="return confirm('Yakin hapus?')" class="btn-danger" style="padding:0.2rem 0.8rem; border-radius:20px; text-decoration:none; font-size:0.7rem;">Hapus</a>
-                                    </td>
-                                    <?php endif; ?>
-                                </tr>
-                                <?php endforeach; ?>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
                             </tbody>
                         </table>
                     </div>
+
+                    <?php if ($is_admin && $totalVendorPages > 1): ?>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 1rem; flex-wrap: wrap; gap: 12px;">
+                            <span style="font-size: 0.85rem; color: #555;">Menampilkan <?= (($vendorPage - 1) * 10) + 1 ?>–<?= min($vendorPage * 10, $totalVendorRows) ?> dari <?= $totalVendorRows ?> Vendor</span>
+                            <?= renderPhpPagination($vendorPage, $totalVendorPages, 'vpage') ?>
+                        </div>
+                    <?php endif; ?>
                 </div>
+            </div>
+
+            <script>
+            function toggleAddVendorForm() {
+                var block = document.getElementById('addVendorFormBlock');
+                if (block) {
+                    block.style.display = (block.style.display === 'none') ? 'block' : 'none';
+                }
+            }
+
+            function showAppDetail(app) {
+                document.getElementById('appDetName').textContent = app.name;
+                document.getElementById('appDetAddress').textContent = app.address || '-';
+                document.getElementById('appDetPhone').textContent = app.phone || '-';
+                document.getElementById('appDetEmail').textContent = app.email;
+                document.getElementById('appDetDate').textContent = new Date(app.created_at).toLocaleString('id-ID', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'});
+                
+                var statusSpan = '';
+                if (app.status === 'Menunggu Persetujuan') {
+                    statusSpan = '<span class="badge" style="background-color: #fff6dd; color: #b78a00; font-weight: 600; padding: 4px 8px; border-radius: 8px; font-size: 12px;"><i class="fas fa-clock"></i> Menunggu Persetujuan</span>';
+                } else if (app.status === 'Disetujui') {
+                    statusSpan = '<span class="badge" style="background-color: #e3f7ec; color: #1e8e5a; font-weight: 600; padding: 4px 8px; border-radius: 8px; font-size: 12px;"><i class="fas fa-check-circle"></i> Disetujui</span>';
+                } else {
+                    statusSpan = '<span class="badge" style="background-color: #fff0f0; color: #e11d48; font-weight: 600; padding: 4px 8px; border-radius: 8px; font-size: 12px;"><i class="fas fa-times-circle"></i> Ditolak</span>';
+                }
+                document.getElementById('appDetStatus').innerHTML = statusSpan;
+                
+                var actionBox = '';
+                if (app.status === 'Menunggu Persetujuan') {
+                    actionBox = '<a href="vendor.php?approve_app=' + app.id + '" class="btn-success" style="padding: 0.4rem 1rem; border-radius: 20px; text-decoration: none; font-size: 0.85rem;" onclick="return confirm(\'Setujui pengajuan vendor PT ' + app.name.replace(/'/g, "\\'") + '?\')">Setujui</a>' +
+                                '<a href="vendor.php?reject_app=' + app.id + '" class="btn-danger" style="padding: 0.4rem 1rem; border-radius: 20px; text-decoration: none; font-size: 0.85rem;" onclick="return confirm(\'Tolak pengajuan vendor PT ' + app.name.replace(/'/g, "\\'") + '?\')">Tolak</a>';
+                }
+                actionBox += '<button type="button" class="btn-info" onclick="closeAppDetailModal()" style="padding: 0.4rem 1rem; border-radius: 20px; font-size: 0.85rem;">Tutup</button>';
+                document.getElementById('appDetActions').innerHTML = actionBox;
+                
+                document.getElementById('appDetailModal').classList.add('show');
+            }
+            function closeAppDetailModal() {
+                document.getElementById('appDetailModal').classList.remove('show');
+            }
+
+            function showVendorDetail(vendor) {
+                document.getElementById('vDetName').textContent = vendor.name;
+                document.getElementById('vDetAddress').textContent = vendor.address || '-';
+                document.getElementById('vDetPhone').textContent = vendor.phone || '-';
+                document.getElementById('vDetEmail').textContent = vendor.email || '-';
+                
+                var statusSpan = '';
+                if ((vendor.status || 'aktif') === 'aktif') {
+                    statusSpan = '<span class="badge" style="background-color: #e3f7ec; color: #1e8e5a; font-weight: 600; padding: 4px 8px; border-radius: 8px; font-size: 12px;"><i class="fas fa-check-circle"></i> Aktif</span>';
+                } else {
+                    statusSpan = '<span class="badge" style="background-color: #fff0f0; color: #e11d48; font-weight: 600; padding: 4px 8px; border-radius: 8px; font-size: 12px;"><i class="fas fa-ban"></i> Nonaktif</span>';
+                }
+                document.getElementById('vDetStatus').innerHTML = statusSpan;
+                
+                document.getElementById('vendorDetailModal').classList.add('show');
+            }
+            function closeVendorDetailModal() {
+                document.getElementById('vendorDetailModal').classList.remove('show');
+            }
+
+            function showVendorEdit(vendor) {
+                document.getElementById('editVendorId').value = vendor.id;
+                document.getElementById('editVendorName').value = vendor.name;
+                document.getElementById('editVendorAddress').value = vendor.address || '';
+                document.getElementById('editVendorPhone').value = vendor.phone || '';
+                document.getElementById('editVendorEmail').value = vendor.email || '';
+                
+                document.getElementById('vendorEditModal').classList.add('show');
+            }
+            function closeVendorEditModal() {
+                document.getElementById('vendorEditModal').classList.remove('show');
+            }
+
+            function filterVendorTableLocal() {
+                var input = document.getElementById("vendorSearchInput").value.toLowerCase();
+                var rows = document.querySelectorAll("#vendorTable tbody tr");
+                rows.forEach(function(row) {
+                    var searchData = row.getAttribute("data-search");
+                    if (searchData) {
+                        if (searchData.indexOf(input) > -1) {
+                            row.style.display = "";
+                        } else {
+                            row.style.display = "none";
+                        }
+                    }
+                });
+            }
+            </script>
             </div>
         <?php elseif ($page === 'material'): ?>
             <div id="materialSection">
@@ -486,6 +1578,50 @@ if ($page === 'riwayat' && $is_vendor) {
                     <i class="fas fa-lock"></i> Menu Material hanya dapat diakses oleh admin gudang PLN. Untuk mengajukan permintaan material, gunakan menu <a href="?page=dpb">DPB</a>.
                 </div>
                 <?php else: ?>
+                
+                <div class="adm-kpi-grid" style="margin-bottom: 24px;">
+                    <!-- Total Jenis -->
+                    <div class="adm-kpi-card">
+                        <div class="adm-kpi-content">
+                            <span class="adm-kpi-number"><?= number_format($stat_m_total_jenis, 0, ',', '.') ?></span>
+                            <span class="adm-kpi-label">Total Jenis Material</span>
+                        </div>
+                        <div class="adm-kpi-icon-wrap" style="background-color: #e0f2fe; color: #0284c7;">
+                            <i class="fas fa-cubes"></i>
+                        </div>
+                    </div>
+                    <!-- Total Stok -->
+                    <div class="adm-kpi-card">
+                        <div class="adm-kpi-content">
+                            <span class="adm-kpi-number"><?= number_format($stat_m_total_stok, 0, ',', '.') ?></span>
+                            <span class="adm-kpi-label">Total Stok Fisik</span>
+                        </div>
+                        <div class="adm-kpi-icon-wrap" style="background-color: #e2fbf0; color: #10b981;">
+                            <i class="fas fa-boxes"></i>
+                        </div>
+                    </div>
+                    <!-- Stok Rendah -->
+                    <div class="adm-kpi-card">
+                        <div class="adm-kpi-content">
+                            <span class="adm-kpi-number"><?= number_format($stat_m_stok_rendah, 0, ',', '.') ?></span>
+                            <span class="adm-kpi-label">Stok Rendah (< 10)</span>
+                        </div>
+                        <div class="adm-kpi-icon-wrap" style="background-color: #ffebee; color: #ef4444;">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                    </div>
+                    <!-- Material Pending -->
+                    <div class="adm-kpi-card">
+                        <div class="adm-kpi-content">
+                            <span class="adm-kpi-number"><?= number_format($stat_m_pending, 0, ',', '.') ?></span>
+                            <span class="adm-kpi-label">Material Pending (DPB)</span>
+                        </div>
+                        <div class="adm-kpi-icon-wrap" style="background-color: #fffdeb; color: #f59e0b;">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="card">
                     <h3><i class="fas fa-cube"></i> Input Material</h3>
 
@@ -521,442 +1657,1172 @@ if ($page === 'riwayat' && $is_vendor) {
                         </div>
                     <?php endif; ?>
 
-                    <div style="margin-top:1rem; display:flex; gap:0.8rem; flex-wrap:wrap; align-items:center; justify-content:space-between;">
-                        <button class="btn-info" onclick="showMaterialList()"><i class="fas fa-list"></i> Lihat Hasil</button>
+                    <div style="margin-top:1.5rem; display:flex; gap:0.8rem; flex-wrap:wrap; align-items:center; justify-content:space-between; border-top: 1px solid #eee; padding-top: 1rem;">
+                        <div style="display:flex; gap:0.8rem; flex-wrap:wrap;">
+                            <button class="btn-info" onclick="showMaterialList()"><i class="fas fa-list"></i> Lihat Hasil</button>
+                            <button type="button" class="btn-success" onclick="openImportModal()"><i class="fas fa-file-upload"></i> Import Material</button>
+                            <a href="material.php?action=template" class="btn-warning" style="text-decoration:none; display:inline-block;"><i class="fas fa-download"></i> Download Template</a>
+                            <a href="material.php?action=export" class="btn-warning" style="text-decoration:none; display:inline-block;"><i class="fas fa-file-csv"></i> Export Material</a>
+                        </div>
                         <div class="form-group" id="materialSearchWrap" style="min-width:260px; margin-bottom:0; display:none;">
-                            <input type="text" id="materialSearchInput" placeholder="Cari Material..." oninput="filterMaterialTable()">
+                            <input type="text" id="materialSearchInput" placeholder="Cari Material..." oninput="filterMaterialTable()" style="padding: 0.5rem 1rem; border-radius: 20px; border: 1px solid #ccc; font-size: 13px; width: 100%;">
                         </div>
                     </div>
                     <div id="materialListContainer" style="margin-top:1rem;"></div>
                 </div>
+
+                <!-- TABLE MATERIAL PENDING -->
+                <div class="card" style="margin-top: 2rem;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem; flex-wrap: wrap; gap: 12px;">
+                        <h4 style="color:#0b2b4a; margin:0;"><i class="fas fa-boxes" style="color:#14828a; margin-right:8px;"></i> Akumulasi Rekap Material Pending (Belum Terpenuhi DPB)</h4>
+                        <div class="form-group" style="min-width:260px; margin-bottom:0;">
+                            <input type="text" id="materialPendingSearchInput" placeholder="Cari material pending..." oninput="filterMaterialPendingTable()" style="padding: 0.5rem 1rem; border-radius: 20px; border: 1px solid #ccc; font-size: 13px; width: 100%;">
+                        </div>
+                    </div>
+                    <div class="table-wrap">
+                        <table id="materialPendingTable">
+                            <thead>
+                                <tr>
+                                    <th style="width: 8%;">No</th>
+                                    <th>Nama Material</th>
+                                    <th>Kode Normalisasi</th>
+                                    <th>Vendor Pemohon</th>
+                                    <th>Total Pending</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if (empty($material_pending_list)): ?>
+                                    <tr>
+                                        <td colspan="5" style="text-align: center; color: #777; padding: 2rem;">Tidak ada material pending saat ini.</td>
+                                    </tr>
+                                <?php else: ?>
+                                    <?php foreach ($material_pending_list as $i => $row): ?>
+                                        <tr data-search="<?= htmlspecialchars(mb_strtolower($row['material_name'] . ' ' . ($row['material_norm'] ?? '') . ' ' . $row['vendor_name'])) ?>">
+                                            <td><?= $i + 1 ?></td>
+                                            <td><strong><?= htmlspecialchars($row['material_name']) ?></strong></td>
+                                            <td><?= htmlspecialchars($row['material_norm'] ?? '-') ?></td>
+                                            <td><?= htmlspecialchars($row['vendor_name']) ?></td>
+                                            <td><span class="badge" style="background-color: #fff6dd; color: #b78a00; font-weight: 700; padding: 4px 8px; border-radius: 8px; font-size: 13px;"><?= number_format($row['jumlah_pending']) ?></span></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <script>
+                function filterMaterialPendingTable() {
+                    var input = document.getElementById("materialPendingSearchInput").value.toLowerCase();
+                    var rows = document.querySelectorAll("#materialPendingTable tbody tr");
+                    rows.forEach(function(row) {
+                        var searchData = row.getAttribute("data-search");
+                        if (searchData) {
+                            if (searchData.indexOf(input) > -1) {
+                                row.style.display = "";
+                            } else {
+                                row.style.display = "none";
+                            }
+                        }
+                    });
+                }
+                </script>
+
                 <?php endif; ?>
             </div>
         <?php elseif ($page === 'dpb'): ?>
             <div id="monitoringSection">
+                <?php if ($is_gudang2): ?>
+                    <!-- GUDANG 2 SIMPLIFIED DPB VIEW -->
+                    <div style="margin-bottom: 1.5rem;">
+                        <h2 style="color: #0b2b4a; font-weight: 700; font-size: 1.8rem; margin: 0 0 4px 0;"><i class="fas fa-clipboard-list" style="color: var(--blue);"></i> DPB</h2>
+                        <p style="color: #64748b; font-size: 0.95rem; margin: 0;">Kelola dan cetak surat DPB.</p>
+                    </div>
 
-                <div class="monitoring-dpb">
-                    <h3 style="color:#0b2b4a;"><i class="fas fa-clipboard-check"></i> Cari / Monitoring DPB</h3>
+                    <!-- Bilah Pencarian & Filter Terpadu -->
+                    <div class="g2-search-filter-card">
+                        <form method="GET" action="index.php" style="margin: 0;">
+                            <input type="hidden" name="page" value="dpb">
+                            <input type="hidden" name="tab" value="<?= htmlspecialchars($_GET['tab'] ?? 'active') ?>">
+                            <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end;">
+                                <div class="form-group" style="flex: 2; min-width: 280px; margin-bottom: 0;">
+                                    <label style="font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 6px; display: block;">Cari Nomor TUG / Nama Vendor</label>
+                                    <input type="text" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="Ketik nomor TUG atau nama vendor..." style="padding: 0.65rem 1rem; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 14px; width: 100%; box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);">
+                                </div>
+                                <div class="form-group" style="flex: 1; min-width: 150px; margin-bottom: 0;">
+                                    <label style="font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 6px; display: block;">Dari Tanggal</label>
+                                    <input type="date" name="start" value="<?= htmlspecialchars($startDate) ?>" style="padding: 0.6rem 1rem; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 14px; width: 100%;">
+                                </div>
+                                <div class="form-group" style="flex: 1; min-width: 150px; margin-bottom: 0;">
+                                    <label style="font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 6px; display: block;">Sampai Tanggal</label>
+                                    <input type="date" name="end" value="<?= htmlspecialchars($endDate) ?>" style="padding: 0.6rem 1rem; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 14px; width: 100%;">
+                                </div>
+                                <div style="display: flex; gap: 8px;">
+                                    <button type="submit" class="btn-success" style="padding: 0.65rem 1.5rem; border-radius: 10px; font-size: 14px; font-weight: 600;"><i class="fas fa-search"></i> Cari</button>
+                                    <?php if ($q !== '' || $startDate !== '' || $endDate !== ''): ?>
+                                        <a href="?page=dpb&tab=<?= htmlspecialchars($_GET['tab'] ?? 'active') ?>" class="btn btn-info" style="text-decoration:none; display: inline-flex; align-items:center; justify-content:center; padding: 0.65rem 1.5rem; border-radius: 10px; font-size: 14px; background:#64748b; color:#fff; font-weight: 600;">Reset</a>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
 
-                    <div class="flex-row">
-                        <div class="form-group">
-                            <label>Nomor TUG</label>
-                            <input id="tugNumberInput" placeholder="TUG 5. MLG26-1624" value="<?= htmlspecialchars($prefillTug) ?>">
+                    <!-- Sistem Tab Terpadu -->
+                    <?php $activeTab = $_GET['tab'] ?? 'active'; ?>
+                    <div class="g2-tabs-container">
+                        <a href="?page=dpb&tab=active<?= $q ? '&q='.urlencode($q) : '' ?><?= $startDate ? '&start='.urlencode($startDate) : '' ?><?= $endDate ? '&end='.urlencode($endDate) : '' ?>" class="g2-tab-btn <?= $activeTab === 'active' ? 'active' : '' ?>">
+                            <i class="fas fa-hourglass-half"></i> Surat Aktif
+                        </a>
+                        <a href="?page=dpb&tab=completed<?= $q ? '&q='.urlencode($q) : '' ?><?= $startDate ? '&start='.urlencode($startDate) : '' ?><?= $endDate ? '&end='.urlencode($endDate) : '' ?>" class="g2-tab-btn <?= $activeTab === 'completed' ? 'active' : '' ?>">
+                            <i class="fas fa-check-circle"></i> Riwayat Selesai
+                        </a>
+                    </div>
+
+                    <!-- Tabel Paginasi -->
+                    <div class="card" style="margin-top: 0;">
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th style="width: 5%;">No</th>
+                                        <th>Nomor TUG</th>
+                                        <th>Vendor</th>
+                                        <th>Tanggal Diminta</th>
+                                        <th>Status</th>
+                                        <th style="width: 15%; text-align: center;">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (empty($gudang_list)): ?>
+                                        <tr>
+                                            <td colspan="6" style="text-align:center; padding:3rem; color:#64748b;">Tidak ada data surat ditemukan.</td>
+                                        </tr>
+                                    <?php else: ?>
+                                        <?php 
+                                        $startNum = ($apage - 1) * $limit + 1;
+                                        foreach ($gudang_list as $i => $row): 
+                                            $statusClass = $row['status'] === 'menunggu_persetujuan' ? 'status-pending' : ($row['status'] === 'aktif' ? 'status-aktif' : ($row['status'] === 'selesai' ? 'status-selesai' : 'status-belum'));
+                                        ?>
+                                            <tr>
+                                                <td><?= $startNum + $i ?></td>
+                                                <td><strong><?= htmlspecialchars($row['tug_number']) ?></strong></td>
+                                                <td><?= htmlspecialchars($row['vendor_name'] ?? '-') ?></td>
+                                                <td><?= date('d-M-Y', strtotime($row['tanggal_diminta'])) ?></td>
+                                                <td><span class="status-badge <?= $statusClass ?>"><?= htmlspecialchars(dpbStatusLabel($row['status'])) ?></span></td>
+                                                <td style="text-align: center;">
+                                                    <button type="button" class="btn-info" onclick="openGudangDpbDetail('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.5rem 1.2rem; border-radius:30px; font-size:0.85rem; font-weight:600; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-folder-open"></i> Kelola Surat</button>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
                         </div>
-                        <button class="btn-success" onclick="loadDPB()">Cari / Muat</button>
-                    </div>
-
-                    <div id="dpbResult" style="margin-top:1.5rem; background:white; border-radius:24px; padding:1rem;">
-                        <p class="text-small">Masukkan nomor TUG yang sudah pernah diajukan untuk melihat detail &amp; status secara otomatis.</p>
-                    </div>
-
-                    <div style="margin-top:1rem; display:flex; gap:0.8rem; flex-wrap:wrap;">
-                        <?php if (!$is_vendor): ?>
-                        <button class="btn-warning" onclick="printDPB()"><i class="fas fa-print"></i> Cetak Surat Jalan</button>
-                        <?php endif; ?>
-                        <?php if (!$is_vendor): ?>
-                        <button class="btn-warning" onclick="(function(){var t=document.getElementById('tugNumberInput').value.trim(); if(!t){alert('Cari nomor TUG dulu sebelum mencetak.');return;} window.open('printDPBForm.php?tug='+encodeURIComponent(t), '_blank');})()"><i class="fas fa-print"></i> Cetak DPB</button>
-                        <?php endif; ?>
-                        <?php if (!$is_vendor): ?>
-                        <button class="btn-info" onclick="saveDPBpdf()"><i class="fas fa-file-pdf"></i> Simpan PDF</button>
+                        <?php if ($totalPages > 1): ?>
+                            <div style="margin-top: 1.5rem; text-align: center;">
+                                <?= renderPhpPagination($apage, $totalPages, 'apage') ?>
+                            </div>
                         <?php endif; ?>
                     </div>
-                </div>
+                <?php else: ?>
+                    <!-- ORIGINAL ADMIN/VENDOR MONITORING DPB -->
+                    <div class="monitoring-dpb">
+                        <h3 style="color:#0b2b4a;"><i class="fas fa-clipboard-check"></i> Cari / Monitoring DPB</h3>
 
-                <?php if ($is_admin || $is_vendor): ?>
-                <div class="card" style="margin-top:1.5rem;">
-                    <h3><i class="fas fa-file-signature"></i> Ajukan Permintaan Material Baru (DPB)</h3>
-                    
-                    <form method="POST" action="dpb.php" id="dpbCreateForm">
                         <div class="flex-row">
                             <div class="form-group">
                                 <label>Nomor TUG</label>
-                                <input type="text" name="tug_number" placeholder="TUG 5. MLG26-XXXX" required>
+                                <input id="tugNumberInput" placeholder="TUG 5. MLG26-1624" value="<?= htmlspecialchars($prefillTug) ?>">
                             </div>
-                            <div class="form-group">
-                                <label>Tanggal Diminta</label>
-                                <input type="date" name="tanggal_diminta" value="<?= date('Y-m-d') ?>" min="2023-01-01" max="2035-12-31">
-                            </div>
+                            <button class="btn-success" onclick="loadDPB()">Cari / Muat</button>
                         </div>
 
-                        <div class="flex-row">
-                            <div class="form-group">
-                                <label>Vendor</label>
-                                <?php if ($is_vendor): ?>
-                                    <input type="text" value="<?= htmlspecialchars($my_vendor['name'] ?? '') ?>" disabled>
-                                    <input type="hidden" name="vendor_id" value="<?= $my_vendor['id'] ?? '' ?>">
-                                <?php else: ?>
-                                    <select name="vendor_id" id="dpbVendorSelect" onchange="autofillVendor()" required>
-                                        <option value="">-- pilih PT / vendor --</option>
-                                        <?php foreach ($vendors as $v): ?>
-                                            <option value="<?= $v['id'] ?>"><?= htmlspecialchars($v['name']) ?></option>
+                        <div id="dpbResult" style="margin-top:1.5rem; background:white; border-radius:24px; padding:1rem;">
+                            <p class="text-small">Masukkan nomor TUG yang sudah pernah diajukan untuk melihat detail &amp; status secara otomatis.</p>
+                        </div>
+
+                        <div style="margin-top:1rem; display:flex; gap:0.8rem; flex-wrap:wrap;">
+                            <?php if (!$is_vendor): ?>
+                            <button class="btn-warning" onclick="printDPB()"><i class="fas fa-print"></i> Cetak Surat Jalan</button>
+                            <?php endif; ?>
+                            <?php if (!$is_vendor): ?>
+                            <button class="btn-warning" onclick="(function(){var t=document.getElementById('tugNumberInput').value.trim(); if(!t){alert('Cari nomor TUG dulu sebelum mencetak.');return;} window.open('printDPBForm.php?tug='+encodeURIComponent(t), '_blank');})()"><i class="fas fa-print"></i> Cetak DPB</button>
+                            <?php endif; ?>
+                            <?php if (!$is_vendor): ?>
+                            <button class="btn-info" onclick="saveDPBpdf()"><i class="fas fa-file-pdf"></i> Simpan PDF</button>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
+                    <!-- TABEL DPB AKTIF -->
+                    <div class="card" style="margin-top: 1.5rem;">
+                        <h3 style="color:#0b2b4a;"><i class="fas fa-hourglass-half" style="color: #14828a;"></i> Daftar DPB Aktif</h3>
+                        <p class="text-small" style="margin-bottom:1rem;">Menampilkan daftar DPB yang sedang berjalan atau menunggu diproses/diserahkan.</p>
+                        
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th style="width: 5%;">No</th>
+                                        <th>Nomor TUG</th>
+                                        <th>Vendor</th>
+                                        <th>Tanggal Diminta</th>
+                                        <th>Status</th>
+                                        <th>Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (empty($active_list)): ?>
+                                        <tr>
+                                            <td colspan="6" style="text-align:center; padding:2rem; color:#777;">Tidak ada DPB aktif saat ini.</td>
+                                        </tr>
+                                    <?php else: ?>
+                                        <?php 
+                                        $startNum = ($apage - 1) * $limit + 1;
+                                        foreach ($active_list as $i => $row): 
+                                            $statusClass = $row['status'] === 'menunggu_persetujuan' ? 'status-pending' : ($row['status'] === 'aktif' ? 'status-aktif' : 'status-belum');
+                                        ?>
+                                            <tr>
+                                                <td><?= $startNum + $i ?></td>
+                                                <td><strong><?= htmlspecialchars($row['tug_number']) ?></strong></td>
+                                                <td><?= htmlspecialchars($row['vendor_name'] ?? '-') ?></td>
+                                                <td><?= date('d-M-Y', strtotime($row['tanggal_diminta'])) ?></td>
+                                                <td><span class="status-badge <?= $statusClass ?>"><?= htmlspecialchars(dpbStatusLabel($row['status'])) ?></span></td>
+                                                <td>
+                                                    <button type="button" class="btn-info" onclick="autofillSearchTug('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.35rem 0.8rem; border-radius:20px; font-size:0.75rem;">Pilih &amp; Muat</button>
+                                                </td>
+                                            </tr>
                                         <?php endforeach; ?>
-                                    </select>
-                                <?php endif; ?>
-                            </div>
-                            <div class="form-group">
-                                <label>No. SPK</label>
-                                <input type="text" name="spk_number" id="dpbSpkInput"
-                                       value="<?= $is_vendor ? htmlspecialchars($my_vendor['default_spk_number'] ?? '') : '' ?>">
-                            </div>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
                         </div>
+                        <?php if ($totalActivePages > 1): ?>
+                            <div style="margin-top: 1.2rem; text-align: center;">
+                                <?= renderPhpPagination($apage, $totalActivePages, 'apage') ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                    <!-- TABEL RIWAYAT DPB -->
+                    <div class="card" style="margin-top: 1.5rem;">
+                        <h3 style="color:#0b2b4a;"><i class="fas fa-history" style="color: #14828a;"></i> Riwayat DPB (Selesai)</h3>
+                        <p class="text-small" style="margin-bottom:1rem;">Daftar pengajuan DPB yang sudah selesai sepenuhnya.</p>
 
-                        <div class="flex-row">
-                            <div class="form-group">
-                                <label>Jenis Pekerjaan</label>
-                                <input type="text" name="jenis_pekerjaan" id="dpbJenisInput"
-                                       value="<?= $is_vendor ? htmlspecialchars($my_vendor['default_jenis_pekerjaan'] ?? '') : '' ?>">
+                        <!-- Filter & Search Form -->
+                        <form method="GET" action="index.php" style="margin-bottom: 1.2rem; background: #f8fafc; padding: 1.2rem; border-radius: 14px; border: 1px solid #eef2f6;">
+                            <input type="hidden" name="page" value="dpb">
+                            <div class="flex-row" style="align-items: flex-end; gap: 1rem; flex-wrap: wrap;">
+                                <div class="form-group" style="flex: 1; min-width: 200px; margin-bottom: 0;">
+                                    <label style="font-size: 11px; text-transform: uppercase; font-weight:700;">Cari Nomor TUG / Vendor</label>
+                                    <input type="text" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="TUG / Nama PT Vendor..." style="padding: 0.55rem 0.8rem; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13px; width: 100%;">
+                                </div>
+                                <div class="form-group" style="width: 150px; margin-bottom: 0;">
+                                    <label style="font-size: 11px; text-transform: uppercase; font-weight:700;">Dari Tanggal</label>
+                                    <input type="date" name="start" value="<?= htmlspecialchars($startDate) ?>" style="padding: 0.5rem 0.8rem; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13px; width: 100%;">
+                                </div>
+                                <div class="form-group" style="width: 150px; margin-bottom: 0;">
+                                    <label style="font-size: 11px; text-transform: uppercase; font-weight:700;">Sampai Tanggal</label>
+                                    <input type="date" name="end" value="<?= htmlspecialchars($endDate) ?>" style="padding: 0.5rem 0.8rem; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13px; width: 100%;">
+                                </div>
+                                <div style="display: flex; gap: 8px; margin-bottom: 0;">
+                                    <button type="submit" class="btn-success" style="padding: 0.6rem 1.2rem; border-radius: 8px; font-size: 13px;"><i class="fas fa-search"></i> Cari</button>
+                                    <?php if ($q !== '' || $startDate !== '' || $endDate !== ''): ?>
+                                        <a href="?page=dpb" class="btn btn-info" style="text-decoration:none; display: inline-flex; align-items:center; justify-content:center; padding: 0.6rem 1.2rem; border-radius: 8px; font-size: 13px; background:#64748b; color:#fff;">Reset</a>
+                                    <?php endif; ?>
+                                </div>
                             </div>
-                            <div class="form-group">
-                                <label>IDPEL</label>
-                                <input type="text" name="idpel" id="dpbIdpelInput"
-                                       value="<?= $is_vendor ? htmlspecialchars($my_vendor['default_idpel'] ?? '') : '' ?>">
-                            </div>
-                            <div class="form-group">
-                                <label>Daya</label>
-                                <input type="text" name="daya" id="dpbDayaInput"
-                                       value="<?= $is_vendor ? htmlspecialchars($my_vendor['default_daya'] ?? '') : '' ?>">
-                            </div>
-                            <div class="form-group">
-                                <label>ULP</label>
-                                <input type="text" name="ulp" id="dpbUlpInput"
-                                       value="<?= $is_vendor ? htmlspecialchars($my_vendor['default_ulp'] ?? '') : '' ?>">
-                            </div>
+                        </form>
+
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th style="width: 5%;">No</th>
+                                        <th>Nomor TUG</th>
+                                        <th>Vendor</th>
+                                        <th>Tanggal Diminta</th>
+                                        <th>Status</th>
+                                        <th>Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (empty($history_list)): ?>
+                                        <tr>
+                                            <td colspan="6" style="text-align:center; padding:2rem; color:#777;">Tidak ada riwayat DPB ditemukan.</td>
+                                        </tr>
+                                    <?php else: ?>
+                                        <?php 
+                                        $startNum = ($hpage - 1) * $limit + 1;
+                                        foreach ($history_list as $i => $row): 
+                                        ?>
+                                            <tr>
+                                                <td><?= $startNum + $i ?></td>
+                                                <td><strong><?= htmlspecialchars($row['tug_number']) ?></strong></td>
+                                                <td><?= htmlspecialchars($row['vendor_name'] ?? '-') ?></td>
+                                                <td><?= date('d-M-Y', strtotime($row['tanggal_diminta'])) ?></td>
+                                                <td><span class="status-badge status-selesai">Selesai</span></td>
+                                                <td>
+                                                    <button type="button" class="btn-info" onclick="autofillSearchTug('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.35rem 0.8rem; border-radius:20px; font-size:0.75rem;">Pilih &amp; Muat</button>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
                         </div>
+                        <?php if ($totalHistoryPages > 1): ?>
+                            <div style="margin-top: 1.2rem; text-align: center;">
+                                <?= renderPhpPagination($hpage, $totalHistoryPages, 'hpage') ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
 
-                        <div class="flex-row">
-                            <div class="form-group">
-                                <label>Nama Pelanggan</label>
-                                <input type="text" name="customer_name" placeholder="Nama pelanggan" required>
+                    <?php if ($is_admin || $is_vendor): ?>
+                        <?php if ($is_vendor && (($my_vendor['status'] ?? 'aktif') !== 'aktif')): ?>
+                            <div class="alert-danger" style="padding:1.2rem; border-radius:16px; margin-top:1.5rem; display:flex; align-items:center; gap:12px; height:auto;">
+                                <i class="fas fa-exclamation-circle" style="font-size:1.5rem;"></i>
+                                <div>
+                                    <strong style="display:block; margin-bottom:2px;">Akun Vendor Nonaktif</strong>
+                                    Vendor Anda saat ini berstatus Nonaktif. Pengajuan surat baru tidak dapat dilakukan. Anda masih dapat melihat riwayat transaksi.
+                                </div>
                             </div>
-                            <div class="form-group">
-                                <label>Alamat Pelanggan</label>
-                                <input type="text" name="customer_address" placeholder="Alamat lengkap pelanggan">
-                            </div>
-                        </div>
+                        <?php else: ?>
+                            <div class="card" style="margin-top:1.5rem;">
+                                <h3><i class="fas fa-file-signature"></i> Ajukan Permintaan Material Baru (DPB)</h3>
+                        
+                                <form method="POST" action="Dpb.php" id="dpbCreateForm">
+                                    <div class="flex-row">
+                                        <div class="form-group">
+                                            <label>Nomor TUG</label>
+                                            <input type="text" name="tug_number" value="<?= getNextTugNumber($db, 'dpb') ?>" readonly required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Tanggal Diminta</label>
+                                            <input type="date" name="tanggal_diminta" value="<?= date('Y-m-d') ?>" min="2023-01-01" max="2035-12-31">
+                                        </div>
+                                    </div>
 
-                        <h4 style="color:#0b2b4a; margin-top:1.2rem;">Data Tanda Tangan</h4>
-                        <div class="flex-row">
-                            <div class="form-group">
-                                <label>Penerima</label>
-                                <input type="text" name="penerima_name" placeholder="Nama penerima">
-                            </div>
-                            <div class="form-group">
-                                <label>Security</label>
-                                <input type="text" name="security_name" placeholder="Nama security">
-                            </div>
-                            <div class="form-group">
-                                <label>Yang Menyerahkan</label>
-                                <input type="text" name="menyerahkan_name" placeholder="Nama yang menyerahkan">
-                            </div>
-                        </div>
+                                    <div class="flex-row">
+                                        <div class="form-group">
+                                            <label>Vendor</label>
+                                            <?php if ($is_vendor): ?>
+                                                <input type="hidden" name="vendor_id" value="<?= $my_vendor['id'] ?>">
+                                                <input type="text" value="<?= htmlspecialchars($my_vendor['name']) ?>" readonly style="background:#f1f5f9; color:#64748b;">
+                                            <?php else: ?>
+                                                <select name="vendor_id" id="dpbVendorSelect" onchange="autofillVendor()" required>
+                                                    <option value="">-- pilih PT / vendor --</option>
+                                                    <?php foreach ($vendors as $v): ?>
+                                                    <option value="<?= $v['id'] ?>"><?= htmlspecialchars($v['name']) ?></option>
+                                                    <?php endforeach; ?>
+                                                </select>
+                                            <?php endif; ?>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>No. SPK</label>
+                                            <input type="text" name="spk_number" id="dpbSpkInput">
+                                        </div>
+                                    </div>
 
-                        <h4 style="color:#0b2b4a; margin-top:1.2rem;">Daftar Material Diminta</h4>
-                        <div id="dpbItemsWrap"></div>
-                        <button type="button" class="btn-info" onclick="addDpbItemRow()" style="margin-top:0.5rem;"><i class="fas fa-plus"></i> Tambah Baris Material</button>
+                                    <div class="flex-row">
+                                        <div class="form-group">
+                                            <label>Jenis Pekerjaan</label>
+                                            <input type="text" name="jenis_pekerjaan" id="dpbJenisInput">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>IDPEL</label>
+                                            <input type="text" name="idpel" id="dpbIdpelInput">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Daya</label>
+                                            <input type="text" name="daya" id="dpbDayaInput">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>ULP</label>
+                                            <input type="text" name="ulp" id="dpbUlpInput">
+                                        </div>
+                                    </div>
 
-                        <div style="margin-top:1.2rem;">
-                            <button type="submit" name="create_dpb" class="btn-success"><i class="fas fa-save"></i> Ajukan</button>
-                        </div>
-                    </form>
-                </div>
+                                    <div class="flex-row">
+                                        <div class="form-group">
+                                            <label>Nama Pelanggan</label>
+                                            <input type="text" name="customer_name" placeholder="Nama pelanggan" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Alamat Pelanggan</label>
+                                            <input type="text" name="customer_address" placeholder="Alamat lengkap pelanggan">
+                                        </div>
+                                    </div>
+
+                                    <h4 style="color:#0b2b4a; margin-top:1.2rem;">Data Tanda Tangan</h4>
+                                    <div class="flex-row">
+                                        <div class="form-group">
+                                            <label>Penerima</label>
+                                            <input type="text" name="penerima_name" placeholder="Nama penerima">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Security</label>
+                                            <input type="text" name="security_name" placeholder="Nama security">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Yang Menyerahkan</label>
+                                            <input type="text" name="menyerahkan_name" placeholder="Nama yang menyerahkan">
+                                        </div>
+                                    </div>
+
+                                    <h4 style="color:#0b2b4a; margin-top:1.2rem;">Daftar Material Diminta</h4>
+                                    <div id="dpbItemsWrap"></div>
+                                    <button type="button" class="btn-info" onclick="addDpbItemRow()" style="margin-top:0.5rem;"><i class="fas fa-plus"></i> Tambah Baris Material</button>
+
+                                    <div style="margin-top:1.2rem;">
+                                        <button type="submit" name="create_dpb" class="btn-success"><i class="fas fa-save"></i> Ajukan</button>
+                                    </div>
+                                </form>
+                            </div>
+                        <?php endif; ?>
+                    <?php endif; ?>
                 <?php endif; ?>
             </div>
         <?php elseif ($page === 'k3'): ?>
             <div id="k3Section">
-                <div class="monitoring-dpb">
-                    <h3 style="color:#0b2b4a;"><i class="fas fa-undo"></i> Cari / Monitoring K3 (Bon Pengembalian Material)</h3>
-                    <div class="flex-row">
-                        <div class="form-group">
-                            <label>Nomor TUG</label>
-                            <input id="k3TugInput" placeholder="TUG 10.MLG23-0014" value="<?= $page === 'k3' ? htmlspecialchars($prefillTug) : '' ?>">
+                <?php if ($is_gudang2): ?>
+                    <!-- GUDANG 2 SIMPLIFIED K3 VIEW -->
+                    <div style="margin-bottom: 1.5rem;">
+                        <h2 style="color: #0b2b4a; font-weight: 700; font-size: 1.8rem; margin: 0 0 4px 0;"><i class="fas fa-undo" style="color: var(--blue);"></i> K3</h2>
+                        <p style="color: #64748b; font-size: 0.95rem; margin: 0;">Kelola dan cetak surat K3 (Bon Pengembalian Material).</p>
+                    </div>
+
+                    <!-- Bilah Pencarian & Filter Terpadu -->
+                    <div class="g2-search-filter-card">
+                        <form method="GET" action="index.php" style="margin: 0;">
+                            <input type="hidden" name="page" value="k3">
+                            <input type="hidden" name="tab" value="<?= htmlspecialchars($_GET['tab'] ?? 'active') ?>">
+                            <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end;">
+                                <div class="form-group" style="flex: 2; min-width: 280px; margin-bottom: 0;">
+                                    <label style="font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 6px; display: block;">Cari Nomor TUG / Nama Vendor</label>
+                                    <input type="text" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="Ketik nomor TUG atau nama vendor..." style="padding: 0.65rem 1rem; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 14px; width: 100%; box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);">
+                                </div>
+                                <div class="form-group" style="flex: 1; min-width: 150px; margin-bottom: 0;">
+                                    <label style="font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 6px; display: block;">Dari Tanggal</label>
+                                    <input type="date" name="start" value="<?= htmlspecialchars($startDate) ?>" style="padding: 0.6rem 1rem; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 14px; width: 100%;">
+                                </div>
+                                <div class="form-group" style="flex: 1; min-width: 150px; margin-bottom: 0;">
+                                    <label style="font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 6px; display: block;">Sampai Tanggal</label>
+                                    <input type="date" name="end" value="<?= htmlspecialchars($endDate) ?>" style="padding: 0.6rem 1rem; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 14px; width: 100%;">
+                                </div>
+                                <div style="display: flex; gap: 8px;">
+                                    <button type="submit" class="btn-success" style="padding: 0.65rem 1.5rem; border-radius: 10px; font-size: 14px; font-weight: 600;"><i class="fas fa-search"></i> Cari</button>
+                                    <?php if ($q !== '' || $startDate !== '' || $endDate !== ''): ?>
+                                        <a href="?page=k3&tab=<?= htmlspecialchars($_GET['tab'] ?? 'active') ?>" class="btn btn-info" style="text-decoration:none; display: inline-flex; align-items:center; justify-content:center; padding: 0.65rem 1.5rem; border-radius: 10px; font-size: 14px; background:#64748b; color:#fff; font-weight: 600;">Reset</a>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Sistem Tab Terpadu -->
+                    <?php $activeTab = $_GET['tab'] ?? 'active'; ?>
+                    <div class="g2-tabs-container">
+                        <a href="?page=k3&tab=active<?= $q ? '&q='.urlencode($q) : '' ?><?= $startDate ? '&start='.urlencode($startDate) : '' ?><?= $endDate ? '&end='.urlencode($endDate) : '' ?>" class="g2-tab-btn <?= $activeTab === 'active' ? 'active' : '' ?>">
+                            <i class="fas fa-hourglass-half"></i> Surat Aktif
+                        </a>
+                        <a href="?page=k3&tab=completed<?= $q ? '&q='.urlencode($q) : '' ?><?= $startDate ? '&start='.urlencode($startDate) : '' ?><?= $endDate ? '&end='.urlencode($endDate) : '' ?>" class="g2-tab-btn <?= $activeTab === 'completed' ? 'active' : '' ?>">
+                            <i class="fas fa-check-circle"></i> Riwayat Selesai
+                        </a>
+                    </div>
+
+                    <!-- Tabel Paginasi -->
+                    <div class="card" style="margin-top: 0;">
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th style="width: 5%;">No</th>
+                                        <th>Nomor TUG</th>
+                                        <th>Vendor</th>
+                                        <th>Tanggal Diminta</th>
+                                        <th>Status</th>
+                                        <th style="width: 15%; text-align: center;">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (empty($gudang_list)): ?>
+                                        <tr>
+                                            <td colspan="6" style="text-align:center; padding:3rem; color:#64748b;">Tidak ada data surat ditemukan.</td>
+                                        </tr>
+                                    <?php else: ?>
+                                        <?php 
+                                        $startNum = ($apage - 1) * $limit + 1;
+                                        foreach ($gudang_list as $i => $row): 
+                                            $statusClass = $row['status'] === 'menunggu_persetujuan' ? 'status-pending' : ($row['status'] === 'aktif' ? 'status-aktif' : ($row['status'] === 'selesai' ? 'status-selesai' : 'status-belum'));
+                                        ?>
+                                            <tr>
+                                                <td><?= $startNum + $i ?></td>
+                                                <td><strong><?= htmlspecialchars($row['tug_number']) ?></strong></td>
+                                                <td><?= htmlspecialchars($row['vendor_name'] ?? '-') ?></td>
+                                                <td><?= date('d-M-Y', strtotime($row['tanggal_diminta'])) ?></td>
+                                                <td><span class="status-badge <?= $statusClass ?>"><?= htmlspecialchars(dpbStatusLabel($row['status'])) ?></span></td>
+                                                <td style="text-align: center;">
+                                                    <button type="button" class="btn-info" onclick="openGudangK3Detail('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.5rem 1.2rem; border-radius:30px; font-size:0.85rem; font-weight:600; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-folder-open"></i> Kelola Surat</button>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
                         </div>
-                        <button class="btn-success" onclick="loadK3()">Cari / Muat</button>
-                    </div>
-                    <div id="k3Result" style="margin-top:1.5rem; background:white; border-radius:24px; padding:1rem;">
-                        <p class="text-small">Masukkan nomor TUG K3 yang sudah pernah diajukan untuk melihat detail &amp; status secara otomatis.</p>
-                    </div>
-                    <div style="margin-top:1rem; display:flex; gap:0.8rem; flex-wrap:wrap;">
-                        <?php if (!$is_vendor): ?>
-                        <button class="btn-warning" onclick="(function(){var t=document.getElementById('k3TugInput').value.trim(); if(!t){alert('Cari nomor TUG dulu sebelum mencetak.');return;} window.open('printK3.php?tug='+encodeURIComponent(t), '_blank');})()"><i class="fas fa-print"></i> Cetak Bon (Format Resmi)</button>
+                        <?php if ($totalPages > 1): ?>
+                            <div style="margin-top: 1.5rem; text-align: center;">
+                                <?= renderPhpPagination($apage, $totalPages, 'apage') ?>
+                            </div>
                         <?php endif; ?>
-                        <button class="btn-info" onclick="(function(){var t=document.getElementById('k3TugInput').value.trim(); if(!t){alert('Cari nomor TUG dulu sebelum mencetak.');return;} window.open('printK3.php?tug='+encodeURIComponent(t), '_blank');})()"><i class="fas fa-file-pdf"></i> Simpan PDF</button>
                     </div>
-                </div>
-
-                <?php if ($is_logged_in): ?>
-                <div class="card" style="margin-top:1.5rem;">
-                    <h3><i class="fas fa-file-signature"></i> Ajukan Pengembalian Material Baru (K3)</h3>
-
-                    <form method="POST" action="k3.php" id="k3CreateForm">
+                <?php else: ?>
+                    <!-- ORIGINAL ADMIN/VENDOR K3 VIEW -->
+                    <div class="monitoring-dpb">
+                        <h3 style="color:#0b2b4a;"><i class="fas fa-undo"></i> Cari / Monitoring K3 (Bon Pengembalian Material)</h3>
                         <div class="flex-row">
                             <div class="form-group">
                                 <label>Nomor TUG</label>
-                                <input type="text" name="tug_number" placeholder="TUG 10.MLG26-XXXX" required>
+                                <input id="k3TugInput" placeholder="TUG 10.MLG23-0014" value="<?= $page === 'k3' ? htmlspecialchars($prefillTug) : '' ?>">
                             </div>
-                            <div class="form-group">
-                                <label>Tanggal Diminta</label>
-                                <input type="date" name="tanggal_diminta" value="<?= date('Y-m-d') ?>" min="2023-01-01" max="2035-12-31">
-                            </div>
+                            <button class="btn-success" onclick="loadK3()">Cari / Muat</button>
                         </div>
+                        <div id="k3Result" style="margin-top:1.5rem; background:white; border-radius:24px; padding:1rem;">
+                            <p class="text-small">Masukkan nomor TUG K3 yang sudah pernah diajukan untuk melihat detail &amp; status secara otomatis.</p>
+                        </div>
+                        <div style="margin-top:1rem; display:flex; gap:0.8rem; flex-wrap:wrap;">
+                            <?php if (!$is_vendor): ?>
+                            <button class="btn-warning" onclick="(function(){var t=document.getElementById('k3TugInput').value.trim(); if(!t){alert('Cari nomor TUG dulu sebelum mencetak.');return;} window.open('printK3.php?tug='+encodeURIComponent(t), '_blank');})()"><i class="fas fa-print"></i> Cetak Bon (Format Resmi)</button>
+                            <?php endif; ?>
+                            <button class="btn-info" onclick="(function(){var t=document.getElementById('k3TugInput').value.trim(); if(!t){alert('Cari nomor TUG dulu sebelum mencetak.');return;} window.open('printK3.php?tug='+encodeURIComponent(t), '_blank');})()"><i class="fas fa-file-pdf"></i> Simpan PDF</button>
+                        </div>
+                    </div>
 
-                        <div class="flex-row">
-                            <div class="form-group">
-                                <label>Vendor</label>
-                                <?php if ($is_vendor): ?>
-                                    <input type="text" value="<?= htmlspecialchars($my_vendor['name'] ?? '') ?>" disabled>
-                                    <input type="hidden" name="vendor_id" value="<?= $my_vendor['id'] ?? '' ?>">
-                                <?php else: ?>
-                                    <select name="vendor_id" id="k3VendorSelect" onchange="autofillVendorGeneric('k3')" required>
-                                        <option value="">-- pilih PT / vendor --</option>
-                                        <?php foreach ($vendors as $v): ?>
-                                            <option value="<?= $v['id'] ?>"><?= htmlspecialchars($v['name']) ?></option>
+                    <!-- TABEL K3 AKTIF -->
+                    <div class="card" style="margin-top: 1.5rem;">
+                        <h3 style="color:#0b2b4a;"><i class="fas fa-hourglass-half" style="color: #14828a;"></i> Daftar K3 Aktif</h3>
+                        <p class="text-small" style="margin-bottom:1rem;">Menampilkan daftar K3 yang sedang berjalan atau menunggu diproses/diserahkan.</p>
+                        
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th style="width: 5%;">No</th>
+                                        <th>Nomor TUG</th>
+                                        <th>Vendor</th>
+                                        <th>Tanggal Diminta</th>
+                                        <th>Status</th>
+                                        <th>Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (empty($active_list)): ?>
+                                        <tr>
+                                            <td colspan="6" style="text-align:center; padding:2rem; color:#777;">Tidak ada K3 aktif saat ini.</td>
+                                        </tr>
+                                    <?php else: ?>
+                                        <?php 
+                                        $startNum = ($apage - 1) * $limit + 1;
+                                        foreach ($active_list as $i => $row): 
+                                            $statusClass = $row['status'] === 'menunggu_persetujuan' ? 'status-pending' : ($row['status'] === 'aktif' ? 'status-aktif' : 'status-belum');
+                                        ?>
+                                            <tr>
+                                                <td><?= $startNum + $i ?></td>
+                                                <td><strong><?= htmlspecialchars($row['tug_number']) ?></strong></td>
+                                                <td><?= htmlspecialchars($row['vendor_name'] ?? '-') ?></td>
+                                                <td><?= date('d-M-Y', strtotime($row['tanggal_diminta'])) ?></td>
+                                                <td><span class="status-badge <?= $statusClass ?>"><?= htmlspecialchars(dpbStatusLabel($row['status'])) ?></span></td>
+                                                <td>
+                                                    <button type="button" class="btn-info" onclick="autofillSearchTug('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.35rem 0.8rem; border-radius:20px; font-size:0.75rem;">Pilih &amp; Muat</button>
+                                                </td>
+                                            </tr>
                                         <?php endforeach; ?>
-                                    </select>
-                                <?php endif; ?>
-                            </div>
-                            <div class="form-group">
-                                <label>No. SPK</label>
-                                <input type="text" name="spk_number" id="k3SpkInput"
-                                       value="<?= $is_vendor ? htmlspecialchars($my_vendor['default_spk_number'] ?? '') : '' ?>">
-                            </div>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
                         </div>
+                        <?php if ($totalActivePages > 1): ?>
+                            <div style="margin-top: 1.2rem; text-align: center;">
+                                <?= renderPhpPagination($apage, $totalActivePages, 'apage') ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
 
-                        <div class="flex-row">
-                            <div class="form-group">
-                                <label>Jenis Pekerjaan</label>
-                                <input type="text" name="jenis_pekerjaan" id="k3JenisInput"
-                                       value="<?= $is_vendor ? htmlspecialchars($my_vendor['default_jenis_pekerjaan'] ?? '') : '' ?>">
+                    <!-- TABEL RIWAYAT K3 -->
+                    <div class="card" style="margin-top: 1.5rem;">
+                        <h3 style="color:#0b2b4a;"><i class="fas fa-history" style="color: #14828a;"></i> Riwayat K3 (Selesai)</h3>
+                        <p class="text-small" style="margin-bottom:1rem;">Daftar pengajuan K3 yang sudah selesai sepenuhnya.</p>
+
+                        <!-- Filter & Search Form -->
+                        <form method="GET" action="index.php" style="margin-bottom: 1.2rem; background: #f8fafc; padding: 1.2rem; border-radius: 14px; border: 1px solid #eef2f6;">
+                            <input type="hidden" name="page" value="k3">
+                            <div class="flex-row" style="align-items: flex-end; gap: 1rem; flex-wrap: wrap;">
+                                <div class="form-group" style="flex: 1; min-width: 200px; margin-bottom: 0;">
+                                    <label style="font-size: 11px; text-transform: uppercase; font-weight:700;">Cari Nomor TUG / Vendor</label>
+                                    <input type="text" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="TUG / Nama PT Vendor..." style="padding: 0.55rem 0.8rem; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13px; width: 100%;">
+                                </div>
+                                <div class="form-group" style="width: 150px; margin-bottom: 0;">
+                                    <label style="font-size: 11px; text-transform: uppercase; font-weight:700;">Dari Tanggal</label>
+                                    <input type="date" name="start" value="<?= htmlspecialchars($startDate) ?>" style="padding: 0.5rem 0.8rem; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13px; width: 100%;">
+                                </div>
+                                <div class="form-group" style="width: 150px; margin-bottom: 0;">
+                                    <label style="font-size: 11px; text-transform: uppercase; font-weight:700;">Sampai Tanggal</label>
+                                    <input type="date" name="end" value="<?= htmlspecialchars($endDate) ?>" style="padding: 0.5rem 0.8rem; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13px; width: 100%;">
+                                </div>
+                                <div style="display: flex; gap: 8px; margin-bottom: 0;">
+                                    <button type="submit" class="btn-success" style="padding: 0.6rem 1.2rem; border-radius: 8px; font-size: 13px;"><i class="fas fa-search"></i> Cari</button>
+                                    <?php if ($q !== '' || $startDate !== '' || $endDate !== ''): ?>
+                                        <a href="?page=k3" class="btn btn-info" style="text-decoration:none; display: inline-flex; align-items:center; justify-content:center; padding: 0.6rem 1.2rem; border-radius: 8px; font-size: 13px; background:#64748b; color:#fff;">Reset</a>
+                                    <?php endif; ?>
+                                </div>
                             </div>
-                            <div class="form-group">
-                                <label>IDPEL</label>
-                                <input type="text" name="idpel" id="k3IdpelInput"
-                                       value="<?= $is_vendor ? htmlspecialchars($my_vendor['default_idpel'] ?? '') : '' ?>">
-                            </div>
-                            <div class="form-group">
-                                <label>Kondisi Material</label>
-                                <select name="kondisi_material">
-                                    <option value="masih_dapat_dipergunakan">Masih Dapat Dipergunakan</option>
-                                    <option value="rusak">Rusak</option>
-                                    <option value="baru">Baru</option>
-                                    <option value="garansi">Garansi</option>
-                                </select>
-                            </div>
+                        </form>
+
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th style="width: 5%;">No</th>
+                                        <th>Nomor TUG</th>
+                                        <th>Vendor</th>
+                                        <th>Tanggal Diminta</th>
+                                        <th>Status</th>
+                                        <th>Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (empty($history_list)): ?>
+                                        <tr>
+                                            <td colspan="6" style="text-align:center; padding:2rem; color:#777;">Tidak ada riwayat K3 ditemukan.</td>
+                                        </tr>
+                                    <?php else: ?>
+                                        <?php 
+                                        $startNum = ($hpage - 1) * $limit + 1;
+                                        foreach ($history_list as $i => $row): 
+                                        ?>
+                                            <tr>
+                                                <td><?= $startNum + $i ?></td>
+                                                <td><strong><?= htmlspecialchars($row['tug_number']) ?></strong></td>
+                                                <td><?= htmlspecialchars($row['vendor_name'] ?? '-') ?></td>
+                                                <td><?= date('d-M-Y', strtotime($row['tanggal_diminta'])) ?></td>
+                                                <td><span class="status-badge status-selesai">Selesai</span></td>
+                                                <td>
+                                                    <button type="button" class="btn-info" onclick="autofillSearchTug('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.35rem 0.8rem; border-radius:20px; font-size:0.75rem;">Pilih &amp; Muat</button>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
                         </div>
+                        <?php if ($totalHistoryPages > 1): ?>
+                            <div style="margin-top: 1.2rem; text-align: center;">
+                                <?= renderPhpPagination($hpage, $totalHistoryPages, 'hpage') ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
 
-                        <div class="flex-row">
-                            <div class="form-group">
-                                <label>Nama Pelanggan</label>
-                                <input type="text" name="customer_name" placeholder="Nama pelanggan" required>
+                    <?php if ($is_admin || $is_vendor): ?>
+                        <?php if ($is_vendor && (($my_vendor['status'] ?? 'aktif') !== 'aktif')): ?>
+                            <div class="alert-danger" style="padding:1.2rem; border-radius:16px; margin-top:1.5rem; display:flex; align-items:center; gap:12px; height:auto;">
+                                <i class="fas fa-exclamation-circle" style="font-size:1.5rem;"></i>
+                                <div>
+                                    <strong style="display:block; margin-bottom:2px;">Akun Vendor Nonaktif</strong>
+                                    Vendor Anda saat ini berstatus Nonaktif. Pengajuan surat baru tidak dapat dilakukan. Anda masih dapat melihat riwayat transaksi.
+                                </div>
                             </div>
-                            <div class="form-group">
-                                <label>Alamat Pelanggan</label>
-                                <input type="text" name="customer_address" placeholder="Alamat lengkap pelanggan">
-                            </div>
-                        </div>
+                        <?php else: ?>
+                            <div class="card" style="margin-top:1.5rem;">
+                                <h3><i class="fas fa-file-signature"></i> Ajukan Pengembalian Material (K3)</h3>
+                        
+                                <form method="POST" action="k3.php" id="k3CreateForm">
+                                    <div class="flex-row">
+                                        <div class="form-group">
+                                            <label>Nomor TUG K3</label>
+                                            <input type="text" name="tug_number" value="<?= getNextTugNumber($db, 'k3') ?>" readonly required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Tanggal Diminta</label>
+                                            <input type="date" name="tanggal_diminta" value="<?= date('Y-m-d') ?>" min="2023-01-01" max="2035-12-31">
+                                        </div>
+                                    </div>
 
-                        <div class="flex-row">
-                            <div class="form-group">
-                                <label>Gudang Pengembalian</label>
-                                <input type="text" name="gudang_pengembalian" value="Gudang PLN Aries Munandar">
-                            </div>
-                            <div class="form-group">
-                                <label>Keterangan Detile</label>
-                                <input type="text" name="keterangan" placeholder="Opsional">
-                            </div>
-                        </div>
+                                    <div class="flex-row">
+                                        <div class="form-group">
+                                            <label>Vendor</label>
+                                            <?php if ($is_vendor): ?>
+                                                <input type="hidden" name="vendor_id" value="<?= $my_vendor['id'] ?>">
+                                                <input type="text" value="<?= htmlspecialchars($my_vendor['name']) ?>" readonly style="background:#f1f5f9; color:#64748b;">
+                                            <?php else: ?>
+                                                <select name="vendor_id" id="k3VendorSelect" onchange="autofillVendorK3()" required>
+                                                    <option value="">-- pilih PT / vendor --</option>
+                                                    <?php foreach ($vendors as $v): ?>
+                                                    <option value="<?= $v['id'] ?>"><?= htmlspecialchars($v['name']) ?></option>
+                                                    <?php endforeach; ?>
+                                                </select>
+                                            <?php endif; ?>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>No. SPK</label>
+                                            <input type="text" name="spk_number" id="k3SpkInput">
+                                        </div>
+                                    </div>
 
-                        <div class="flex-row">
-                            <div class="form-group">
-                                <label>Nomor Seri</label>
-                                <input type="text" name="nomor_seri" placeholder="Opsional">
-                            </div>
-                            <div class="form-group">
-                                <label>No. DPB / Bukti</label>
-                                <input type="text" name="no_dpb_bukti" placeholder="Opsional">
-                            </div>
-                            <div class="form-group">
-                                <label>Lokasi Penempatan Material/Dipakai</label>
-                                <input type="text" name="lokasi_penempatan" placeholder="Opsional">
-                            </div>
-                        </div>
+                                    <div class="flex-row">
+                                        <div class="form-group">
+                                            <label>Jenis Pekerjaan</label>
+                                            <input type="text" name="jenis_pekerjaan" id="k3JenisInput">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>IDPEL</label>
+                                            <input type="text" name="idpel" id="k3IdpelInput">
+                                        </div>
+                                    </div>
 
-                        <h4 style="color:#0b2b4a; margin-top:1.2rem;">Data Tanda Tangan</h4>
-                        <div class="flex-row">
-                            <div class="form-group">
-                                <label>Setuju</label>
-                                <input type="text" name="setuju_name" placeholder="Nama penyetuju">
-                            </div>
-                            <div class="form-group">
-                                <label>Kepala Gudang</label>
-                                <input type="text" name="kepala_gudang_name" placeholder="Nama kepala gudang">
-                            </div>
-                            <div class="form-group">
-                                <label>Pemeriksa / Pengawas</label>
-                                <input type="text" name="pemeriksa_pengawas_name" placeholder="Nama pemeriksa/pengawas">
-                            </div>
-                            <div class="form-group">
-                                <label>Yang Menyerahkan</label>
-                                <input type="text" name="yang_menyerahkan_name" placeholder="Nama yang menyerahkan">
-                            </div>
-                        </div>
+                                    <div class="flex-row">
+                                        <div class="form-group">
+                                            <label>Nama Pelanggan</label>
+                                            <input type="text" name="customer_name" placeholder="Nama pelanggan" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Alamat Pelanggan</label>
+                                            <input type="text" name="customer_address" placeholder="Alamat lengkap pelanggan">
+                                        </div>
+                                    </div>
 
-                        <h4 style="color:#0b2b4a; margin-top:1.2rem;">Daftar Material Dikembalikan</h4>
-                        <div id="k3ItemsWrap"></div>
-                        <button type="button" class="btn-info" onclick="addK3ItemRow()" style="margin-top:0.5rem;"><i class="fas fa-plus"></i> Tambah Baris Material</button>
+                                    <div class="flex-row">
+                                        <div class="form-group">
+                                            <label>Nomor Seri Alat</label>
+                                            <input type="text" name="nomor_seri" placeholder="Contoh: SN-12345">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>No. DPB / Bukti Penyerahan</label>
+                                            <input type="text" name="no_dpb_bukti" placeholder="Nomor DPB asal barang">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Lokasi Penempatan Material / Dipakai</label>
+                                            <input type="text" name="lokasi_penempatan" placeholder="Lokasi pemasangan">
+                                        </div>
+                                    </div>
 
-                        <div style="margin-top:1.2rem;">
-                            <button type="submit" name="create_k3" class="btn-success"><i class="fas fa-save"></i> Ajukan</button>
-                        </div>
-                    </form>
-                </div>
-                <?php else: ?>
-                <div class="alert-danger" style="padding:1rem; border-radius:10px; margin-top:1.5rem;">
-                    <i class="fas fa-lock"></i> Silakan <a href="#" onclick="showLogin();return false;">login</a> atau <a href="#" onclick="showRegister();return false;">daftar sebagai vendor</a> untuk mengajukan pengembalian material.
-                </div>
+                                    <div class="flex-row">
+                                        <div class="form-group">
+                                            <label>Gudang Pengembalian</label>
+                                            <input type="text" name="gudang_pengembalian" value="Gudang UP3 Malang" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Keterangan Detile</label>
+                                            <input type="text" name="keterangan" placeholder="Keterangan kondisi / alasan pengembalian">
+                                        </div>
+                                    </div>
+
+                                    <div class="flex-row">
+                                        <div class="form-group">
+                                            <label>Kondisi Material</label>
+                                            <select name="kondisi_material" required>
+                                                <option value="masih_dapat_dipergunakan">Masih Dapat Dipergunakan (MDB)</option>
+                                                <option value="rusak">Rusak / Tidak Dapat Digunakan (TUA)</option>
+                                                <option value="baru">Baru (Sisa Proyek)</option>
+                                                <option value="garansi">Klaim Garansi</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <h4 style="color:#0b2b4a; margin-top:1.2rem;">Data Tanda Tangan</h4>
+                                    <div class="flex-row">
+                                        <div class="form-group">
+                                            <label>Setuju (Manager/Asman)</label>
+                                            <input type="text" name="setuju_name" value="<?= DEFAULT_SIGNER_SETUJU ?>">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Kepala Gudang</label>
+                                            <input type="text" name="kepala_gudang_name" value="<?= DEFAULT_SIGNER_KEPALA_GUDANG ?>">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Pemeriksa / Pengawas</label>
+                                            <input type="text" name="pemeriksa_pengawas_name" placeholder="Nama pemeriksa/pengawas">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Yang Menyerahkan (Vendor)</label>
+                                            <input type="text" name="yang_menyerahkan_name" placeholder="Nama petugas vendor">
+                                        </div>
+                                    </div>
+
+                                    <h4 style="color:#0b2b4a; margin-top:1.2rem;">Daftar Material Dikembalikan</h4>
+                                    <div id="k3ItemsWrap"></div>
+                                    <button type="button" class="btn-info" onclick="addK3ItemRow()" style="margin-top:0.5rem;"><i class="fas fa-plus"></i> Tambah Baris Material</button>
+
+                                    <div style="margin-top:1.2rem;">
+                                        <button type="submit" name="create_k3" class="btn-success"><i class="fas fa-save"></i> Ajukan</button>
+                                    </div>
+                                </form>
+                            </div>
+                        <?php endif; ?>
+                    <?php endif; ?>
                 <?php endif; ?>
             </div>
         <?php elseif ($page === 'k7'): ?>
             <div id="k7Section">
-                <div class="monitoring-dpb">
-                    <h3 style="color:#0b2b4a;"><i class="fas fa-recycle"></i> Cari / Monitoring K7 (Bon Pemakaian Material Bekas)</h3>
-                    <div class="flex-row">
-                        <div class="form-group">
-                            <label>Nomor TUG</label>
-                            <input id="k7TugInput" placeholder="TUG 5 NS.MLG23-0028" value="<?= $page === 'k7' ? htmlspecialchars($prefillTug) : '' ?>">
-                        </div>
-                        <button class="btn-success" onclick="loadK7()">Cari / Muat</button>
+                <?php if ($is_gudang2): ?>
+                    <!-- GUDANG 2 SIMPLIFIED K7 VIEW -->
+                    <div style="margin-bottom: 1.5rem;">
+                        <h2 style="color: #0b2b4a; font-weight: 700; font-size: 1.8rem; margin: 0 0 4px 0;"><i class="fas fa-recycle" style="color: var(--blue);"></i> K7</h2>
+                        <p style="color: #64748b; font-size: 0.95rem; margin: 0;">Kelola dan cetak surat K7 (Bon Pemakaian Material Bekas).</p>
                     </div>
-                    <div id="k7Result" style="margin-top:1.5rem; background:white; border-radius:24px; padding:1rem;">
-                        <p class="text-small">Masukkan nomor TUG K7 yang sudah pernah diajukan untuk melihat detail &amp; status secara otomatis.</p>
-                    </div>
-                    <div style="margin-top:1rem; display:flex; gap:0.8rem; flex-wrap:wrap;">
-                        <?php if (!$is_vendor): ?>
-                        <button class="btn-warning" onclick="(function(){var t=document.getElementById('k7TugInput').value.trim(); if(!t){alert('Cari nomor TUG dulu sebelum mencetak.');return;} window.open('printK7.php?tug='+encodeURIComponent(t), '_blank');})()"><i class="fas fa-print"></i> Cetak Bon (Format Resmi)</button>
-                        <?php endif; ?>
-                        <button class="btn-info" onclick="(function(){var t=document.getElementById('k7TugInput').value.trim(); if(!t){alert('Cari nomor TUG dulu sebelum mencetak.');return;} window.open('printK7.php?tug='+encodeURIComponent(t), '_blank');})()"><i class="fas fa-file-pdf"></i> Simpan PDF</button>
-                    </div>
-                </div>
 
-                <?php if ($is_logged_in): ?>
-                <div class="card" style="margin-top:1.5rem;">
-                    <h3><i class="fas fa-file-signature"></i> Ajukan Pemakaian Material Bekas Baru (K7)</h3>
-                    
-                    <form method="POST" action="k7.php" id="k7CreateForm">
+                    <!-- Bilah Pencarian & Filter Terpadu -->
+                    <div class="g2-search-filter-card">
+                        <form method="GET" action="index.php" style="margin: 0;">
+                            <input type="hidden" name="page" value="k7">
+                            <input type="hidden" name="tab" value="<?= htmlspecialchars($_GET['tab'] ?? 'active') ?>">
+                            <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end;">
+                                <div class="form-group" style="flex: 2; min-width: 280px; margin-bottom: 0;">
+                                    <label style="font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 6px; display: block;">Cari Nomor TUG / Nama Vendor</label>
+                                    <input type="text" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="Ketik nomor TUG atau nama vendor..." style="padding: 0.65rem 1rem; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 14px; width: 100%; box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);">
+                                </div>
+                                <div class="form-group" style="flex: 1; min-width: 150px; margin-bottom: 0;">
+                                    <label style="font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 6px; display: block;">Dari Tanggal</label>
+                                    <input type="date" name="start" value="<?= htmlspecialchars($startDate) ?>" style="padding: 0.6rem 1rem; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 14px; width: 100%;">
+                                </div>
+                                <div class="form-group" style="flex: 1; min-width: 150px; margin-bottom: 0;">
+                                    <label style="font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 6px; display: block;">Sampai Tanggal</label>
+                                    <input type="date" name="end" value="<?= htmlspecialchars($endDate) ?>" style="padding: 0.6rem 1rem; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 14px; width: 100%;">
+                                </div>
+                                <div style="display: flex; gap: 8px;">
+                                    <button type="submit" class="btn-success" style="padding: 0.65rem 1.5rem; border-radius: 10px; font-size: 14px; font-weight: 600;"><i class="fas fa-search"></i> Cari</button>
+                                    <?php if ($q !== '' || $startDate !== '' || $endDate !== ''): ?>
+                                        <a href="?page=k7&tab=<?= htmlspecialchars($_GET['tab'] ?? 'active') ?>" class="btn btn-info" style="text-decoration:none; display: inline-flex; align-items:center; justify-content:center; padding: 0.65rem 1.5rem; border-radius: 10px; font-size: 14px; background:#64748b; color:#fff; font-weight: 600;">Reset</a>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Sistem Tab Terpadu -->
+                    <?php $activeTab = $_GET['tab'] ?? 'active'; ?>
+                    <div class="g2-tabs-container">
+                        <a href="?page=k7&tab=active<?= $q ? '&q='.urlencode($q) : '' ?><?= $startDate ? '&start='.urlencode($startDate) : '' ?><?= $endDate ? '&end='.urlencode($endDate) : '' ?>" class="g2-tab-btn <?= $activeTab === 'active' ? 'active' : '' ?>">
+                            <i class="fas fa-hourglass-half"></i> Surat Aktif
+                        </a>
+                        <a href="?page=k7&tab=completed<?= $q ? '&q='.urlencode($q) : '' ?><?= $startDate ? '&start='.urlencode($startDate) : '' ?><?= $endDate ? '&end='.urlencode($endDate) : '' ?>" class="g2-tab-btn <?= $activeTab === 'completed' ? 'active' : '' ?>">
+                            <i class="fas fa-check-circle"></i> Riwayat Selesai
+                        </a>
+                    </div>
+
+                    <!-- Tabel Paginasi -->
+                    <div class="card" style="margin-top: 0;">
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th style="width: 5%;">No</th>
+                                        <th>Nomor TUG</th>
+                                        <th>Vendor</th>
+                                        <th>Tanggal Diminta</th>
+                                        <th>Status</th>
+                                        <th style="width: 15%; text-align: center;">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (empty($gudang_list)): ?>
+                                        <tr>
+                                            <td colspan="6" style="text-align:center; padding:3rem; color:#64748b;">Tidak ada data surat ditemukan.</td>
+                                        </tr>
+                                    <?php else: ?>
+                                        <?php 
+                                        $startNum = ($apage - 1) * $limit + 1;
+                                        foreach ($gudang_list as $i => $row): 
+                                            $statusClass = $row['status'] === 'menunggu_persetujuan' ? 'status-pending' : ($row['status'] === 'aktif' ? 'status-aktif' : ($row['status'] === 'selesai' ? 'status-selesai' : 'status-belum'));
+                                        ?>
+                                            <tr>
+                                                <td><?= $startNum + $i ?></td>
+                                                <td><strong><?= htmlspecialchars($row['tug_number']) ?></strong></td>
+                                                <td><?= htmlspecialchars($row['vendor_name'] ?? '-') ?></td>
+                                                <td><?= date('d-M-Y', strtotime($row['tanggal_diminta'])) ?></td>
+                                                <td><span class="status-badge <?= $statusClass ?>"><?= htmlspecialchars(dpbStatusLabel($row['status'])) ?></span></td>
+                                                <td style="text-align: center;">
+                                                    <button type="button" class="btn-info" onclick="openGudangK7Detail('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.5rem 1.2rem; border-radius:30px; font-size:0.85rem; font-weight:600; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-folder-open"></i> Kelola Surat</button>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                        <?php if ($totalPages > 1): ?>
+                            <div style="margin-top: 1.5rem; text-align: center;">
+                                <?= renderPhpPagination($apage, $totalPages, 'apage') ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                <?php else: ?>
+                    <!-- ORIGINAL ADMIN/VENDOR K7 VIEW -->
+                    <div class="monitoring-dpb">
+                        <h3 style="color:#0b2b4a;"><i class="fas fa-recycle"></i> Cari / Monitoring K7 (Bon Pemakaian Material Bekas)</h3>
                         <div class="flex-row">
                             <div class="form-group">
                                 <label>Nomor TUG</label>
-                                <input type="text" name="tug_number" placeholder="TUG 5 NS.MLG26-XXXX" required>
+                                <input id="k7TugInput" placeholder="TUG 5 NS.MLG23-0028" value="<?= $page === 'k7' ? htmlspecialchars($prefillTug) : '' ?>">
                             </div>
-                            <div class="form-group">
-                                <label>Tanggal Diminta</label>
-                                <input type="date" name="tanggal_diminta" value="<?= date('Y-m-d') ?>" min="2023-01-01" max="2035-12-31">
-                            </div>
+                            <button class="btn-success" onclick="loadK7()">Cari / Muat</button>
                         </div>
+                        <div id="k7Result" style="margin-top:1.5rem; background:white; border-radius:24px; padding:1rem;">
+                            <p class="text-small">Masukkan nomor TUG K7 yang sudah pernah diajukan untuk melihat detail &amp; status secara otomatis.</p>
+                        </div>
+                        <div style="margin-top:1rem; display:flex; gap:0.8rem; flex-wrap:wrap;">
+                            <?php if (!$is_vendor): ?>
+                            <button class="btn-warning" onclick="(function(){var t=document.getElementById('k7TugInput').value.trim(); if(!t){alert('Cari nomor TUG dulu sebelum mencetak.');return;} window.open('printK7.php?tug='+encodeURIComponent(t), '_blank');})()"><i class="fas fa-print"></i> Cetak Bon (Format Resmi)</button>
+                            <?php endif; ?>
+                            <button class="btn-info" onclick="(function(){var t=document.getElementById('k7TugInput').value.trim(); if(!t){alert('Cari nomor TUG dulu sebelum mencetak.');return;} window.open('printK7.php?tug='+encodeURIComponent(t), '_blank');})()"><i class="fas fa-file-pdf"></i> Simpan PDF</button>
+                        </div>
+                    </div>
 
-                        <div class="flex-row">
-                            <div class="form-group">
-                                <label>Vendor</label>
-                                <?php if ($is_vendor): ?>
-                                    <input type="text" value="<?= htmlspecialchars($my_vendor['name'] ?? '') ?>" disabled>
-                                    <input type="hidden" name="vendor_id" value="<?= $my_vendor['id'] ?? '' ?>">
-                                <?php else: ?>
-                                    <select name="vendor_id" id="k7VendorSelect" onchange="autofillVendorGeneric('k7')" required>
-                                        <option value="">-- pilih PT / vendor --</option>
-                                        <?php foreach ($vendors as $v): ?>
-                                            <option value="<?= $v['id'] ?>"><?= htmlspecialchars($v['name']) ?></option>
+                    <!-- TABEL K7 AKTIF -->
+                    <div class="card" style="margin-top: 1.5rem;">
+                        <h3 style="color:#0b2b4a;"><i class="fas fa-hourglass-half" style="color: #14828a;"></i> Daftar K7 Aktif</h3>
+                        <p class="text-small" style="margin-bottom:1rem;">Menampilkan daftar K7 yang sedang berjalan atau menunggu diproses/diserahkan.</p>
+                        
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th style="width: 5%;">No</th>
+                                        <th>Nomor TUG</th>
+                                        <th>Vendor</th>
+                                        <th>Tanggal Diminta</th>
+                                        <th>Status</th>
+                                        <th>Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (empty($active_list)): ?>
+                                        <tr>
+                                            <td colspan="6" style="text-align:center; padding:2rem; color:#777;">Tidak ada K7 aktif saat ini.</td>
+                                        </tr>
+                                    <?php else: ?>
+                                        <?php 
+                                        $startNum = ($apage - 1) * $limit + 1;
+                                        foreach ($active_list as $i => $row): 
+                                            $statusClass = $row['status'] === 'menunggu_persetujuan' ? 'status-pending' : ($row['status'] === 'aktif' ? 'status-aktif' : 'status-belum');
+                                        ?>
+                                            <tr>
+                                                <td><?= $startNum + $i ?></td>
+                                                <td><strong><?= htmlspecialchars($row['tug_number']) ?></strong></td>
+                                                <td><?= htmlspecialchars($row['vendor_name'] ?? '-') ?></td>
+                                                <td><?= date('d-M-Y', strtotime($row['tanggal_diminta'])) ?></td>
+                                                <td><span class="status-badge <?= $statusClass ?>"><?= htmlspecialchars(dpbStatusLabel($row['status'])) ?></span></td>
+                                                <td>
+                                                    <button type="button" class="btn-info" onclick="autofillSearchTug('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.35rem 0.8rem; border-radius:20px; font-size:0.75rem;">Pilih &amp; Muat</button>
+                                                </td>
+                                            </tr>
                                         <?php endforeach; ?>
-                                    </select>
-                                <?php endif; ?>
-                            </div>
-                            <div class="form-group">
-                                <label>No. SPK</label>
-                                <input type="text" name="spk_number" id="k7SpkInput"
-                                       value="<?= $is_vendor ? htmlspecialchars($my_vendor['default_spk_number'] ?? '') : '' ?>">
-                            </div>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
                         </div>
+                        <?php if ($totalActivePages > 1): ?>
+                            <div style="margin-top: 1.2rem; text-align: center;">
+                                <?= renderPhpPagination($apage, $totalActivePages, 'apage') ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
 
-                        <div class="flex-row">
-                            <div class="form-group">
-                                <label>Jenis Pekerjaan</label>
-                                <input type="text" name="jenis_pekerjaan" id="k7JenisInput"
-                                       value="<?= $is_vendor ? htmlspecialchars($my_vendor['default_jenis_pekerjaan'] ?? '') : '' ?>">
+                    <!-- TABEL RIWAYAT K7 -->
+                    <div class="card" style="margin-top: 1.5rem;">
+                        <h3 style="color:#0b2b4a;"><i class="fas fa-history" style="color: #14828a;"></i> Riwayat K7 (Selesai)</h3>
+                        <p class="text-small" style="margin-bottom:1rem;">Daftar pengajuan K7 yang sudah selesai sepenuhnya.</p>
+
+                        <!-- Filter & Search Form -->
+                        <form method="GET" action="index.php" style="margin-bottom: 1.2rem; background: #f8fafc; padding: 1.2rem; border-radius: 14px; border: 1px solid #eef2f6;">
+                            <input type="hidden" name="page" value="k7">
+                            <div class="flex-row" style="align-items: flex-end; gap: 1rem; flex-wrap: wrap;">
+                                <div class="form-group" style="flex: 1; min-width: 200px; margin-bottom: 0;">
+                                    <label style="font-size: 11px; text-transform: uppercase; font-weight:700;">Cari Nomor TUG / Vendor</label>
+                                    <input type="text" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="TUG / Nama PT Vendor..." style="padding: 0.55rem 0.8rem; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13px; width: 100%;">
+                                </div>
+                                <div class="form-group" style="width: 150px; margin-bottom: 0;">
+                                    <label style="font-size: 11px; text-transform: uppercase; font-weight:700;">Dari Tanggal</label>
+                                    <input type="date" name="start" value="<?= htmlspecialchars($startDate) ?>" style="padding: 0.5rem 0.8rem; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13px; width: 100%;">
+                                </div>
+                                <div class="form-group" style="width: 150px; margin-bottom: 0;">
+                                    <label style="font-size: 11px; text-transform: uppercase; font-weight:700;">Sampai Tanggal</label>
+                                    <input type="date" name="end" value="<?= htmlspecialchars($endDate) ?>" style="padding: 0.5rem 0.8rem; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13px; width: 100%;">
+                                </div>
+                                <div style="display: flex; gap: 8px; margin-bottom: 0;">
+                                    <button type="submit" class="btn-success" style="padding: 0.6rem 1.2rem; border-radius: 8px; font-size: 13px;"><i class="fas fa-search"></i> Cari</button>
+                                    <?php if ($q !== '' || $startDate !== '' || $endDate !== ''): ?>
+                                        <a href="?page=k7" class="btn btn-info" style="text-decoration:none; display: inline-flex; align-items:center; justify-content:center; padding: 0.6rem 1.2rem; border-radius: 8px; font-size: 13px; background:#64748b; color:#fff;">Reset</a>
+                                    <?php endif; ?>
+                                </div>
                             </div>
-                            <div class="form-group">
-                                <label>IDPEL</label>
-                                <input type="text" name="idpel" id="k7IdpelInput"
-                                       value="<?= $is_vendor ? htmlspecialchars($my_vendor['default_idpel'] ?? '') : '' ?>">
-                            </div>
-                            <div class="form-group">
-                                <label>Daya</label>
-                                <input type="text" name="daya" id="k7DayaInput"
-                                       value="<?= $is_vendor ? htmlspecialchars($my_vendor['default_daya'] ?? '') : '' ?>">
-                            </div>
-                            <div class="form-group">
-                                <label>ULP</label>
-                                <input type="text" name="ulp" id="k7UlpInput"
-                                       value="<?= $is_vendor ? htmlspecialchars($my_vendor['default_ulp'] ?? '') : '' ?>">
-                            </div>
+                        </form>
+
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th style="width: 5%;">No</th>
+                                        <th>Nomor TUG</th>
+                                        <th>Vendor</th>
+                                        <th>Tanggal Diminta</th>
+                                        <th>Status</th>
+                                        <th>Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (empty($history_list)): ?>
+                                        <tr>
+                                            <td colspan="6" style="text-align:center; padding:2rem; color:#777;">Tidak ada riwayat K7 ditemukan.</td>
+                                        </tr>
+                                    <?php else: ?>
+                                        <?php 
+                                        $startNum = ($hpage - 1) * $limit + 1;
+                                        foreach ($history_list as $i => $row): 
+                                        ?>
+                                            <tr>
+                                                <td><?= $startNum + $i ?></td>
+                                                <td><strong><?= htmlspecialchars($row['tug_number']) ?></strong></td>
+                                                <td><?= htmlspecialchars($row['vendor_name'] ?? '-') ?></td>
+                                                <td><?= date('d-M-Y', strtotime($row['tanggal_diminta'])) ?></td>
+                                                <td><span class="status-badge status-selesai">Selesai</span></td>
+                                                <td>
+                                                    <button type="button" class="btn-info" onclick="autofillSearchTug('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.35rem 0.8rem; border-radius:20px; font-size:0.75rem;">Pilih &amp; Muat</button>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
                         </div>
+                        <?php if ($totalHistoryPages > 1): ?>
+                            <div style="margin-top: 1.2rem; text-align: center;">
+                                <?= renderPhpPagination($hpage, $totalHistoryPages, 'hpage') ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
 
-                        <div class="flex-row">
-                            <div class="form-group">
-                                <label>Nama Pelanggan</label>
-                                <input type="text" name="customer_name" placeholder="Nama pelanggan" required>
+                    <?php if ($is_admin || $is_vendor): ?>
+                        <?php if ($is_vendor && (($my_vendor['status'] ?? 'aktif') !== 'aktif')): ?>
+                            <div class="alert-danger" style="padding:1.2rem; border-radius:16px; margin-top:1.5rem; display:flex; align-items:center; gap:12px; height:auto;">
+                                <i class="fas fa-exclamation-circle" style="font-size:1.5rem;"></i>
+                                <div>
+                                    <strong style="display:block; margin-bottom:2px;">Akun Vendor Nonaktif</strong>
+                                    Vendor Anda saat ini berstatus Nonaktif. Pengajuan surat baru tidak dapat dilakukan. Anda masih dapat melihat riwayat transaksi.
+                                </div>
                             </div>
-                            <div class="form-group">
-                                <label>Alamat Pelanggan</label>
-                                <input type="text" name="customer_address" placeholder="Alamat lengkap pelanggan">
-                            </div>
-                        </div>
+                        <?php else: ?>
+                            <div class="card" style="margin-top:1.5rem;">
+                                <h3><i class="fas fa-file-signature"></i> Ajukan Pemakaian Material Bekas (K7)</h3>
+                        
+                                <form method="POST" action="k7.php" id="k7CreateForm">
+                                    <div class="flex-row">
+                                        <div class="form-group">
+                                            <label>Nomor TUG K7</label>
+                                            <input type="text" name="tug_number" value="<?= getNextTugNumber($db, 'k7') ?>" readonly required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Tanggal Diminta</label>
+                                            <input type="date" name="tanggal_diminta" value="<?= date('Y-m-d') ?>" min="2023-01-01" max="2035-12-31">
+                                        </div>
+                                    </div>
 
-                        <div class="flex-row">
-                            <div class="form-group">
-                                <label>Merk Material</label>
-                                <input type="text" name="merk_material" placeholder="Opsional">
-                            </div>
-                            <div class="form-group">
-                                <label>Nomor Seri</label>
-                                <input type="text" name="nomor_seri" placeholder="Opsional">
-                            </div>
-                            <div class="form-group">
-                                <label>Keterangan</label>
-                                <input type="text" name="keterangan" placeholder="mis. DARI K3 NO. 0040 EX. WAVA HUSADA">
-                            </div>
-                        </div>
+                                    <div class="flex-row">
+                                        <div class="form-group">
+                                            <label>Vendor</label>
+                                            <?php if ($is_vendor): ?>
+                                                <input type="hidden" name="vendor_id" value="<?= $my_vendor['id'] ?>">
+                                                <input type="text" value="<?= htmlspecialchars($my_vendor['name']) ?>" readonly style="background:#f1f5f9; color:#64748b;">
+                                            <?php else: ?>
+                                                <select name="vendor_id" id="k7VendorSelect" onchange="autofillVendorK7()" required>
+                                                    <option value="">-- pilih PT / vendor --</option>
+                                                    <?php foreach ($vendors as $v): ?>
+                                                    <option value="<?= $v['id'] ?>"><?= htmlspecialchars($v['name']) ?></option>
+                                                    <?php endforeach; ?>
+                                                </select>
+                                            <?php endif; ?>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>No. SPK</label>
+                                            <input type="text" name="spk_number" id="k7SpkInput">
+                                        </div>
+                                    </div>
 
-                        <h4 style="color:#0b2b4a; margin-top:1.2rem;">Data Tanda Tangan</h4>
-                        <div class="flex-row">
-                            <div class="form-group">
-                                <label>Setuju</label>
-                                <input type="text" name="setuju_name" placeholder="Nama penyetuju">
-                            </div>
-                            <div class="form-group">
-                                <label>Kepala Gudang</label>
-                                <input type="text" name="kepala_gudang_name" placeholder="Nama kepala gudang">
-                            </div>
-                            <div class="form-group">
-                                <label>Pemeriksa / Pengawas</label>
-                                <input type="text" name="pemeriksa_pengawas_name" placeholder="Nama pemeriksa/pengawas">
-                            </div>
-                            <div class="form-group">
-                                <label>Penerima</label>
-                                <input type="text" name="penerima_name" placeholder="Nama penerima">
-                            </div>
-                        </div>
+                                    <div class="flex-row">
+                                        <div class="form-group">
+                                            <label>Jenis Pekerjaan</label>
+                                            <input type="text" name="jenis_pekerjaan" id="k7JenisInput">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>IDPEL</label>
+                                            <input type="text" name="idpel" id="k7IdpelInput">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Daya</label>
+                                            <input type="text" name="daya" id="k7DayaInput">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>ULP</label>
+                                            <input type="text" name="ulp" id="k7UlpInput">
+                                        </div>
+                                    </div>
 
-                        <h4 style="color:#0b2b4a; margin-top:1.2rem;">Daftar Material Bekas Dipakai</h4>
-                        <div id="k7ItemsWrap"></div>
-                        <button type="button" class="btn-info" onclick="addK7ItemRow()" style="margin-top:0.5rem;"><i class="fas fa-plus"></i> Tambah Baris Material</button>
+                                    <div class="flex-row">
+                                        <div class="form-group">
+                                            <label>Nama Pelanggan</label>
+                                            <input type="text" name="customer_name" placeholder="Nama pelanggan" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Alamat Pelanggan</label>
+                                            <input type="text" name="customer_address" placeholder="Alamat lengkap pelanggan">
+                                        </div>
+                                    </div>
 
-                        <div style="margin-top:1.2rem;">
-                            <button type="submit" name="create_k7" class="btn-success"><i class="fas fa-save"></i> Ajukan</button>
-                        </div>
-                    </form>
-                </div>
-                <?php else: ?>
-                <div class="alert-danger" style="padding:1rem; border-radius:10px; margin-top:1.5rem;">
-                    <i class="fas fa-lock"></i> Silakan <a href="#" onclick="showLogin();return false;">login</a> atau <a href="#" onclick="showRegister();return false;">daftar sebagai vendor</a> untuk mengajukan pemakaian material bekas.
-                </div>
+                                    <div class="flex-row">
+                                        <div class="form-group">
+                                            <label>Merk Material</label>
+                                            <input type="text" name="merk_material" placeholder="Opsional">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Nomor Seri</label>
+                                            <input type="text" name="nomor_seri" placeholder="Opsional">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Keterangan</label>
+                                            <input type="text" name="keterangan" placeholder="mis. DARI K3 NO. 0040 EX. WAVA HUSADA">
+                                        </div>
+                                    </div>
+
+                                    <h4 style="color:#0b2b4a; margin-top:1.2rem;">Data Tanda Tangan</h4>
+                                    <div class="flex-row">
+                                        <div class="form-group">
+                                            <label>Setuju</label>
+                                            <input type="text" name="setuju_name" placeholder="Nama penyetuju">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Kepala Gudang</label>
+                                            <input type="text" name="kepala_gudang_name" placeholder="Nama kepala gudang">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Pemeriksa / Pengawas</label>
+                                            <input type="text" name="pemeriksa_pengawas_name" placeholder="Nama pemeriksa/pengawas">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Penerima</label>
+                                            <input type="text" name="penerima_name" placeholder="Nama penerima">
+                                        </div>
+                                    </div>
+
+                                    <h4 style="color:#0b2b4a; margin-top:1.2rem;">Daftar Material Bekas Dipakai</h4>
+                                    <div id="k7ItemsWrap"></div>
+                                    <button type="button" class="btn-info" onclick="addK7ItemRow()" style="margin-top:0.5rem;"><i class="fas fa-plus"></i> Tambah Baris Material</button>
+
+                                    <div style="margin-top:1.2rem;">
+                                        <button type="submit" name="create_k7" class="btn-success"><i class="fas fa-save"></i> Ajukan</button>
+                                    </div>
+                                </form>
+                            </div>
+                        <?php endif; ?>
+                    <?php endif; ?>
                 <?php endif; ?>
             </div>
         <?php elseif ($page === 'riwayat'): ?>
@@ -1063,6 +2929,130 @@ if ($page === 'riwayat' && $is_vendor) {
                 </div>
                 <?php endif; ?>
             </div>
+        <?php elseif ($page === 'material_pending'): ?>
+            <div id="materialPendingSection">
+                <div class="card" style="margin-bottom: 24px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                        <div>
+                            <h3 style="color:#0b2b4a; margin: 0 0 4px 0;"><i class="fas fa-exclamation-triangle" style="color: #14828a; margin-right: 8px;"></i> Daftar Material Pending</h3>
+                            <p class="text-small" style="margin:0;">Menampilkan material yang diminta oleh vendor tetapi belum seluruhnya terkirim/diterima.</p>
+                        </div>
+                        <a href="?page=home" class="btn-info" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px;">
+                            <i class="fas fa-arrow-left"></i> Kembali ke Dashboard
+                        </a>
+                    </div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 24px;">
+                    <!-- TABLE 1 — DETAIL MATERIAL PENDING -->
+                    <div class="card">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem; flex-wrap: wrap; gap: 12px;">
+                            <h4 style="color:#0b2b4a; margin:0;"><i class="fas fa-list-ul" style="color:#14828a; margin-right:8px;"></i> Table 1 — Rincian Pending per Vendor</h4>
+                            <div class="form-group" style="min-width:260px; margin-bottom:0;">
+                                <input type="text" id="detailSearchInput" placeholder="Cari rincian pending..." oninput="filterDetailTable()" style="padding: 0.5rem 1rem; border-radius: 20px; border: 1px solid #ccc; font-size: 13px; width: 100%;">
+                            </div>
+                        </div>
+                        <div class="table-wrap">
+                            <table id="detailPendingTable">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 5%;">No</th>
+                                        <th>Nama Material</th>
+                                        <th>Jumlah Pending</th>
+                                        <th>Vendor</th>
+                                        <th>Alamat Vendor</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (empty($detail_pending)): ?>
+                                        <tr>
+                                            <td colspan="5" style="text-align: center; color: #777; padding: 2rem;">Tidak ada rincian material pending saat ini.</td>
+                                        </tr>
+                                    <?php else: ?>
+                                        <?php foreach ($detail_pending as $i => $row): ?>
+                                            <tr data-search="<?= htmlspecialchars(mb_strtolower($row['material_name'] . ' ' . $row['vendor_name'] . ' ' . ($row['vendor_address'] ?? ''))) ?>">
+                                                <td><?= $i + 1 ?></td>
+                                                <td><strong><?= htmlspecialchars($row['material_name']) ?></strong></td>
+                                                <td><span class="badge" style="background-color: #ffeef0; color: #e11d48; font-weight: 700; padding: 4px 8px; border-radius: 8px; font-size: 13px;"><?= number_format($row['jumlah_pending']) ?></span></td>
+                                                <td><?= htmlspecialchars($row['vendor_name']) ?></td>
+                                                <td><?= htmlspecialchars($row['vendor_address'] ?: '-') ?></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- TABLE 2 — REKAP MATERIAL PENDING -->
+                    <div class="card">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem; flex-wrap: wrap; gap: 12px;">
+                            <h4 style="color:#0b2b4a; margin:0;"><i class="fas fa-boxes" style="color:#14828a; margin-right:8px;"></i> Table 2 — Akumulasi Rekap per Material</h4>
+                            <div class="form-group" style="min-width:260px; margin-bottom:0;">
+                                <input type="text" id="rekapSearchInput" placeholder="Cari rekap pending..." oninput="filterRekapTable()" style="padding: 0.5rem 1rem; border-radius: 20px; border: 1px solid #ccc; font-size: 13px; width: 100%;">
+                            </div>
+                        </div>
+                        <div class="table-wrap">
+                            <table id="rekapPendingTable">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 8%;">No</th>
+                                        <th>Nama Material</th>
+                                        <th>Total Pending</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (empty($rekap_pending)): ?>
+                                        <tr>
+                                            <td colspan="3" style="text-align: center; color: #777; padding: 2rem;">Tidak ada rekap material pending saat ini.</td>
+                                        </tr>
+                                    <?php else: ?>
+                                        <?php foreach ($rekap_pending as $i => $row): ?>
+                                            <tr data-search="<?= htmlspecialchars(mb_strtolower($row['material_name'])) ?>">
+                                                <td><?= $i + 1 ?></td>
+                                                <td><strong><?= htmlspecialchars($row['material_name']) ?></strong></td>
+                                                <td><span class="badge" style="background-color: #fffae6; color: #d97706; font-weight: 700; padding: 4px 8px; border-radius: 8px; font-size: 13px;"><?= number_format($row['total_pending']) ?></span></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <script>
+            function filterDetailTable() {
+                var input = document.getElementById("detailSearchInput").value.toLowerCase();
+                var rows = document.querySelectorAll("#detailPendingTable tbody tr");
+                rows.forEach(function(row) {
+                    var searchData = row.getAttribute("data-search");
+                    if (searchData) {
+                        if (searchData.indexOf(input) > -1) {
+                            row.style.display = "";
+                        } else {
+                            row.style.display = "none";
+                        }
+                    }
+                });
+            }
+
+            function filterRekapTable() {
+                var input = document.getElementById("rekapSearchInput").value.toLowerCase();
+                var rows = document.querySelectorAll("#rekapPendingTable tbody tr");
+                rows.forEach(function(row) {
+                    var searchData = row.getAttribute("data-search");
+                    if (searchData) {
+                        if (searchData.indexOf(input) > -1) {
+                            row.style.display = "";
+                        } else {
+                            row.style.display = "none";
+                        }
+                    }
+                });
+            }
+            </script>
         <?php endif; ?>
     </div>
 
@@ -1071,7 +3061,11 @@ if ($page === 'riwayat' && $is_vendor) {
         <span>PLN Identity and Access Management</span>
         <span>Copyright - Aurellia Mezaluna Azwa</span>
     </div>
-</div><div id="authModal" class="modal <?= $openModal ? 'show' : '' ?>">
+</div><?php if ($is_admin || $is_vendor): ?>
+        </div><!-- /.adm-content -->
+    </div><!-- /.adm-main -->
+</div><!-- /.adm-layout -->
+<?php endif; ?><div id="authModal" class="modal <?= $openModal ? 'show' : '' ?>">
     <div class="modal-content">
         <span class="close" onclick="closeModal()">&times;</span>
 
@@ -1207,6 +3201,110 @@ if ($page === 'riwayat' && $is_vendor) {
         </form>
     </div>
 </div>
+
+<!-- MODAL DETAIL PENGAJUAN VENDOR -->
+<div id="appDetailModal" class="modal">
+    <div class="modal-content" style="max-width: 540px;">
+        <span class="close" onclick="closeAppDetailModal()">&times;</span>
+        <h2 style="color:#0b2b4a;"><i class="fas fa-clipboard-list"></i> Detail Pengajuan Vendor</h2>
+        <table class="detail-table" style="width: 100%; border-collapse: collapse; margin-top: 1rem;">
+            <tr>
+                <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: 600; width: 40%; text-align: left;">Nama PT</td>
+                <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: left;" id="appDetName"></td>
+            </tr>
+            <tr>
+                <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: 600; text-align: left;">Alamat</td>
+                <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: left;" id="appDetAddress"></td>
+            </tr>
+            <tr>
+                <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: 600; text-align: left;">Telepon</td>
+                <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: left;" id="appDetPhone"></td>
+            </tr>
+            <tr>
+                <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: 600; text-align: left;">Email</td>
+                <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: left;" id="appDetEmail"></td>
+            </tr>
+            <tr>
+                <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: 600; text-align: left;">Tanggal Pengajuan</td>
+                <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: left;" id="appDetDate"></td>
+            </tr>
+            <tr>
+                <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: 600; text-align: left;">Status</td>
+                <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: left;" id="appDetStatus"></td>
+            </tr>
+        </table>
+        <div style="margin-top: 1.5rem; display: flex; gap: 8px; justify-content: flex-end;" id="appDetActions">
+            <!-- Disetujui/Tolak loaded dynamically -->
+        </div>
+    </div>
+</div>
+
+<!-- MODAL DETAIL VENDOR -->
+<div id="vendorDetailModal" class="modal">
+    <div class="modal-content" style="max-width: 600px;">
+        <span class="close" onclick="closeVendorDetailModal()">&times;</span>
+        <h2 style="color:#0b2b4a;"><i class="fas fa-building"></i> Profil &amp; Data Default Vendor</h2>
+        <div style="max-height: 400px; overflow-y: auto; padding-right: 8px; margin-top: 1rem;">
+            <table class="detail-table" style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: 600; width: 40%; text-align: left;">Nama PT</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: left;" id="vDetName"></td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: 600; text-align: left;">Alamat</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: left;" id="vDetAddress"></td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: 600; text-align: left;">Telepon</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: left;" id="vDetPhone"></td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: 600; text-align: left;">Email</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: left;" id="vDetEmail"></td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: 600; text-align: left;">Status</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: left;" id="vDetStatus"></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL EDIT VENDOR -->
+<div id="vendorEditModal" class="modal">
+    <div class="modal-content" style="max-width: 600px;">
+        <span class="close" onclick="closeVendorEditModal()">&times;</span>
+        <h2 style="color:#0b2b4a;"><i class="fas fa-edit"></i> Edit Data &amp; Defaults Vendor</h2>
+        <form method="POST" action="vendor.php" style="margin-top: 1rem;">
+            <input type="hidden" name="vendor_id" id="editVendorId">
+            <div class="flex-row">
+                <div class="form-group">
+                    <label>Nama PT</label>
+                    <input type="text" name="vendor_name" id="editVendorName" required>
+                </div>
+                <div class="form-group">
+                    <label>Alamat</label>
+                    <input type="text" name="vendor_address" id="editVendorAddress">
+                </div>
+            </div>
+            <div class="flex-row">
+                <div class="form-group">
+                    <label>Telepon</label>
+                    <input type="text" name="vendor_phone" id="editVendorPhone">
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" name="vendor_email" id="editVendorEmail" required>
+                </div>
+            </div>
+            <div style="margin-top:1.5rem; display: flex; gap: 8px; justify-content: flex-end;">
+                <button type="submit" name="edit_vendor" class="btn-success">Simpan Perubahan</button>
+                <button type="button" class="btn-info" onclick="closeVendorEditModal()">Batal</button>
+            </div>
+        </form>
+    </div>
+</div>
 <?php endif; ?>
 
 <script>
@@ -1222,9 +3320,455 @@ if ($page === 'riwayat' && $is_vendor) {
     <?php if ($prefillTug): ?>
     window.AUTO_LOAD_TUG = <?= json_encode($prefillTug) ?>;
     <?php endif; ?>
+
+    function autofillSearchTug(tug) {
+        var input = document.getElementById("tugNumberInput") || document.getElementById("k3TugInput") || document.getElementById("k7TugInput");
+        if (input) {
+            input.value = tug;
+            if (document.getElementById("tugNumberInput")) {
+                loadDPB();
+            } else if (document.getElementById("k3TugInput")) {
+                loadK3();
+            } else if (document.getElementById("k7TugInput")) {
+                loadK7();
+            }
+            input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
 </script>
 <div id="printArea"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="js/script.js?v=<?= filemtime(__DIR__ . '/js/script.js') ?>"></script>
+
+<?php if ($page === 'home' && ($is_admin || $is_vendor)): ?>
+<script>
+(function() {
+    // 1. Chart Tren Bulanan
+    var ctxTrend = document.getElementById('monthlyTrendChart');
+    if (ctxTrend) {
+        new Chart(ctxTrend.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'],
+                datasets: [
+                    {
+                        label: 'DPB',
+                        data: <?= json_encode(array_values($chart_dpb)) ?>,
+                        borderColor: '#1e8e5a',
+                        backgroundColor: 'rgba(30, 142, 90, 0.05)',
+                        borderWidth: 3,
+                        tension: 0.3,
+                        fill: true
+                    },
+                    {
+                        label: 'K3',
+                        data: <?= json_encode(array_values($chart_k3)) ?>,
+                        borderColor: '#b78a00',
+                        backgroundColor: 'rgba(183, 138, 0, 0.05)',
+                        borderWidth: 3,
+                        tension: 0.3,
+                        fill: true
+                    },
+                    {
+                        label: 'K7',
+                        data: <?= json_encode(array_values($chart_k7)) ?>,
+                        borderColor: '#8e1eff',
+                        backgroundColor: 'rgba(142, 30, 255, 0.05)',
+                        borderWidth: 3,
+                        tension: 0.3,
+                        fill: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: {
+                            font: { family: 'Poppins', size: 12 }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { stepSize: 1 }
+                    }
+                }
+            }
+        });
+    }
+
+    <?php if ($is_admin): ?>
+    // 2. Chart Top 5 Pending Materials (Admin Only)
+    var ctxPending = document.getElementById('topPendingChart');
+    if (ctxPending) {
+        var topMaterials = <?= json_encode($top_pending_materials) ?>;
+        var labels = topMaterials.map(function(item) { return item.material_name; });
+        var data = topMaterials.map(function(item) { return parseInt(item.total_pending); });
+
+        new Chart(ctxPending.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: labels.length > 0 ? labels : ['Tidak ada pending'],
+                datasets: [{
+                    label: 'Total Pending',
+                    data: data.length > 0 ? data : [0],
+                    backgroundColor: 'rgba(20, 130, 138, 0.7)',
+                    borderColor: '#14828a',
+                    borderWidth: 1.5,
+                    borderRadius: 8
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        ticks: { stepSize: 1 }
+                    }
+                }
+            }
+        });
+    }
+    <?php else: ?>
+    // 3. Chart Top 5 Material Terbanyak Diajukan (Vendor Only)
+    var ctxRequested = document.getElementById('requestedMaterialsChart');
+    if (ctxRequested) {
+        var topRequested = <?= json_encode($top_requested_materials ?? []) ?>;
+        var labels = topRequested.map(function(item) { return item.material_name; });
+        var data = topRequested.map(function(item) { return parseInt(item.total_requested); });
+
+        new Chart(ctxRequested.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: labels.length > 0 ? labels : ['Belum ada pengajuan'],
+                datasets: [{
+                    label: 'Total Kuantitas Diajukan',
+                    data: data.length > 0 ? data : [0],
+                    backgroundColor: 'rgba(30, 142, 90, 0.7)',
+                    borderColor: '#1e8e5a',
+                    borderWidth: 1.5,
+                    borderRadius: 8
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        ticks: { stepSize: 1 }
+                    }
+                }
+            }
+        });
+    }
+    <?php endif; ?>
+})();
+</script>
+<?php endif; ?>
+
+<?php if ($is_admin || $is_vendor): ?>
+<!-- Mobile overlay & sidebar toggle logic -->
+<div class="adm-drawer-overlay" id="admOverlay" onclick="admCloseSidebar()"></div>
+
+<script>
+(function () {
+    var layout   = document.getElementById('admLayout');
+    var sidebar  = document.getElementById('admSidebar');
+    var topbar   = document.getElementById('admTopbar');
+    var main     = document.getElementById('admMain');
+    var isMobile = window.innerWidth <= 768;
+    var isTablet = window.innerWidth <= 1024;
+
+    var userCollapsed = false;
+
+    /* ---- init state ---- */
+    function initSidebar() {
+        var prevMobile = isMobile;
+        isMobile = window.innerWidth <= 768;
+        isTablet = window.innerWidth <= 1024;
+
+        if (prevMobile !== isMobile) {
+            layout.classList.remove('drawer-open', 'sidebar-collapsed');
+        }
+
+        if (isMobile) {
+            // Mobile: drawer tersembunyi
+            sidebar.style.transform = '';
+        } else {
+            // Desktop & Tablet
+            if (userCollapsed || isTablet) {
+                layout.classList.add('sidebar-collapsed');
+            } else {
+                layout.classList.remove('sidebar-collapsed');
+            }
+        }
+    }
+
+    /* ---- toggle (tombol hamburger) ---- */
+    window.admToggleSidebar = function () {
+        isMobile = window.innerWidth <= 768;
+        if (isMobile) {
+            if (layout.classList.contains('drawer-open')) {
+                layout.classList.remove('drawer-open');
+            } else {
+                layout.classList.add('drawer-open');
+            }
+        } else {
+            // Desktop / Tablet
+            if (layout.classList.contains('sidebar-collapsed')) {
+                layout.classList.remove('sidebar-collapsed');
+                userCollapsed = false;
+            } else {
+                layout.classList.add('sidebar-collapsed');
+                userCollapsed = true;
+            }
+        }
+    };
+
+    /* ---- tutup drawer (klik overlay) ---- */
+    window.admCloseSidebar = function () {
+        layout.classList.remove('drawer-open');
+    };
+
+    /* ---- resize handler ---- */
+    window.addEventListener('resize', function () {
+        initSidebar();
+    });
+
+    initSidebar();
+})();
+</script>
+<?php endif; ?>
+
+<!-- MODAL DETAIL & KELOLA SURAT GUDANG (GUDANG 2) -->
+<div id="g2DetailModal" class="modal">
+    <div class="modal-content" style="max-width: 800px; padding: 0; border-radius: 20px; overflow: hidden; border: none; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);">
+        <!-- Modal Header -->
+        <div style="background: linear-gradient(135deg, #0b2b4a 0%, #1e3a8a 100%); padding: 1.5rem 2rem; display: flex; justify-content: space-between; align-items: center; color: white;">
+            <h3 style="margin: 0; font-size: 1.25rem; font-weight: 600; display: flex; align-items: center; gap: 10px;"><i class="fas fa-file-invoice" id="g2ModalIcon"></i> Detail Surat <span id="g2ModalTugTitle"></span></h3>
+            <span class="close" onclick="closeG2DetailModal()" style="color: rgba(255,255,255,0.8); font-size: 1.8rem; line-height: 1; cursor: pointer; transition: color 0.2s;" onmouseover="this.style.color='white'" onmouseout="this.style.color='rgba(255,255,255,0.8)'">&times;</span>
+        </div>
+        
+        <!-- Modal Body (Dynamic Ajax Container) -->
+        <div style="padding: 2rem; max-height: 70vh; overflow-y: auto; background: #f8fafc;">
+            <!-- Hidden inputs & containers needed to satisfy original AJAX code -->
+            <div style="display: none;">
+                <!-- DPB inputs/outputs -->
+                <input type="text" id="tugNumberInput">
+                <div id="dpbResult"></div>
+                <!-- K3 inputs/outputs -->
+                <input type="text" id="k3TugInput">
+                <div id="k3Result"></div>
+                <!-- K7 inputs/outputs -->
+                <input type="text" id="k7TugInput">
+                <div id="k7Result"></div>
+            </div>
+
+            <!-- Beautiful Content Wrapper shown to the user -->
+            <div id="g2DetailContentContainer">
+                <div style="text-align: center; padding: 3rem 0; color: #64748b;">
+                    <i class="fas fa-spinner fa-spin" style="font-size: 2.5rem; color: var(--blue); margin-bottom: 1rem; display: block;"></i>
+                    Membuka detail surat...
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function openG2DetailModal() {
+        var modal = document.getElementById("g2DetailModal");
+        if (modal) {
+            modal.style.display = "block";
+            document.body.style.overflow = "hidden"; // Prevent background scroll
+        }
+    }
+
+    function closeG2DetailModal() {
+        var modal = document.getElementById("g2DetailModal");
+        if (modal) {
+            modal.style.display = "none";
+            document.body.style.overflow = ""; // Restore background scroll
+        }
+    }
+
+    // Intercept ESC key to close modal
+    window.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            closeG2DetailModal();
+        }
+    });
+
+    // Helper to monitor AJAX changes in hidden elements and render them beautifully
+    function observeAndRenderGudangDetail(resultElementId, type) {
+        var target = document.getElementById(resultElementId);
+        if (!target) return;
+
+        // Open modal first with loading indicator
+        document.getElementById("g2DetailContentContainer").innerHTML = `
+            <div style="text-align: center; padding: 3rem 0; color: #64748b;">
+                <i class="fas fa-spinner fa-spin" style="font-size: 2.5rem; color: var(--blue); margin-bottom: 1rem; display: block;"></i>
+                Memuat data dari database...
+            </div>
+        `;
+        openG2DetailModal();
+
+        // Use MutationObserver or fallback to a fast poll to check when the Ajax finishes loading
+        var checkInterval = setInterval(function() {
+            // Original code injects HTML content into results container
+            // When it changes from empty/default instructions to actual result cards, we extract and style it
+            var html = target.innerHTML.trim();
+            if (html && !html.includes("Masukkan nomor TUG") && !html.includes("secara otomatis")) {
+                clearInterval(checkInterval);
+                
+                // Set modal icon based on type
+                var iconEl = document.getElementById("g2ModalIcon");
+                if (type === 'dpb') {
+                    iconEl.className = "fas fa-file-invoice";
+                } else if (type === 'k3') {
+                    iconEl.className = "fas fa-undo";
+                } else {
+                    iconEl.className = "fas fa-recycle";
+                }
+
+                // Render into our clean modal container
+                var container = document.getElementById("g2DetailContentContainer");
+                container.innerHTML = html;
+
+                // Adjust any inner styling to fit inside the modal beautifully
+                // 1. Remove unnecessary card styling or borders inside modal
+                var innerCards = container.querySelectorAll('.card');
+                innerCards.forEach(function(card) {
+                    card.style.boxShadow = 'none';
+                    card.style.border = '1px solid #e2e8f0';
+                    card.style.margin = '0 0 1rem 0';
+                });
+
+                // 2. Style status badge
+                var badges = container.querySelectorAll('.status-badge');
+                badges.forEach(function(b) {
+                    b.style.fontSize = '0.9rem';
+                    b.style.padding = '0.5rem 1rem';
+                });
+
+                // 3. Make sure table wraps look good
+                var tables = container.querySelectorAll('table');
+                tables.forEach(function(t) {
+                    t.style.width = '100%';
+                    t.style.marginTop = '1rem';
+                });
+
+                // 4. Style buttons/actions inside detail
+                var actionButtons = container.querySelectorAll('button, .btn, .btn-success, .btn-danger, .btn-warning, .btn-info');
+                actionButtons.forEach(function(btn) {
+                    // Make them larger and touch friendly
+                    if (btn.style) {
+                        btn.style.padding = '0.6rem 1.2rem';
+                        btn.style.borderRadius = '10px';
+                        btn.style.fontWeight = '600';
+                    }
+                });
+
+                // Add print buttons bar inside the modal if print script exists
+                var printPdfSection = document.createElement('div');
+                printPdfSection.style.marginTop = '2rem';
+                printPdfSection.style.paddingTop = '1.5rem';
+                printPdfSection.style.borderTop = '1px solid #e2e8f0';
+                printPdfSection.style.display = 'flex';
+                printPdfSection.style.gap = '12px';
+                printPdfSection.style.justifyContent = 'flex-end';
+
+                var printOfficialBtn = document.createElement('button');
+                printOfficialBtn.className = 'btn-warning';
+                printOfficialBtn.style.padding = '0.7rem 1.5rem';
+                printOfficialBtn.style.borderRadius = '10px';
+                printOfficialBtn.style.fontWeight = '600';
+                printOfficialBtn.innerHTML = '<i class="fas fa-print"></i> Cetak Format Resmi';
+                printOfficialBtn.onclick = function() {
+                    var filename = type === 'dpb' ? 'printDPB.php' : (type === 'k3' ? 'printK3.php' : 'printK7.php');
+                    window.open(filename + '?tug=' + encodeURIComponent(document.getElementById("g2ModalTugTitle").innerText), '_blank');
+                };
+
+                var savePdfBtn = document.createElement('button');
+                savePdfBtn.className = 'btn-info';
+                savePdfBtn.style.padding = '0.7rem 1.5rem';
+                savePdfBtn.style.borderRadius = '10px';
+                savePdfBtn.style.fontWeight = '600';
+                savePdfBtn.innerHTML = '<i class="fas fa-file-pdf"></i> Simpan PDF';
+                savePdfBtn.onclick = function() {
+                    var filename = type === 'dpb' ? 'printDPB.php' : (type === 'k3' ? 'printK3.php' : 'printK7.php');
+                    window.open(filename + '?tug=' + encodeURIComponent(document.getElementById("g2ModalTugTitle").innerText), '_blank');
+                };
+
+                printPdfSection.appendChild(printOfficialBtn);
+                printPdfSection.appendChild(savePdfBtn);
+                container.appendChild(printPdfSection);
+            }
+        }, 100);
+
+        // Clear poll if modal is closed or after 10 seconds to avoid memory leaks
+        setTimeout(function() {
+            clearInterval(checkInterval);
+        }, 10000);
+    }
+
+    function openGudangDpbDetail(tug) {
+        document.getElementById("g2ModalTugTitle").innerText = tug;
+        var input = document.getElementById("tugNumberInput");
+        if (input) {
+            input.value = tug;
+            // Clear current output to trigger observer
+            document.getElementById("dpbResult").innerHTML = "";
+            // Load DPB via original AJAX
+            loadDPB();
+            // Start observer
+            observeAndRenderGudangDetail("dpbResult", "dpb");
+        }
+    }
+
+    function openGudangK3Detail(tug) {
+        document.getElementById("g2ModalTugTitle").innerText = tug;
+        var input = document.getElementById("k3TugInput");
+        if (input) {
+            input.value = tug;
+            // Clear current output
+            document.getElementById("k3Result").innerHTML = "";
+            // Load K3 via original AJAX
+            loadK3();
+            // Start observer
+            observeAndRenderGudangDetail("k3Result", "k3");
+        }
+    }
+
+    function openGudangK7Detail(tug) {
+        document.getElementById("g2ModalTugTitle").innerText = tug;
+        var input = document.getElementById("k7TugInput");
+        if (input) {
+            input.value = tug;
+            // Clear current output
+            document.getElementById("k7Result").innerHTML = "";
+            // Load K7 via original AJAX
+            loadK7();
+            // Start observer
+            observeAndRenderGudangDetail("k7Result", "k7");
+        }
+    }
+</script>
+
 </body>
 </html>

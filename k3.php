@@ -15,6 +15,14 @@ if (isset($_POST['create_k3'])) {
     $tanggal = $_POST['tanggal_diminta'] ?? date('Y-m-d');
     $vendorId = isVendor() ? currentVendorId() : ($_POST['vendor_id'] ?? null);
 
+    // Cek status vendor (aktif/nonaktif)
+    $v = getVendorById($db, $vendorId);
+    if (!$v || ($v['status'] ?? 'aktif') !== 'aktif') {
+        $_SESSION['error'] = "Vendor Anda saat ini berstatus Nonaktif. Pengajuan surat baru tidak dapat dilakukan. Anda masih dapat melihat riwayat transaksi.";
+        header("Location: index.php?page=k3");
+        exit();
+    }
+
     $spk = trim($_POST['spk_number'] ?? '');
     $jenis = trim($_POST['jenis_pekerjaan'] ?? '');
     $idpel = trim($_POST['idpel'] ?? '');
@@ -122,15 +130,62 @@ if (isset($_POST['update_k3_received'])) {
     $kodes = $_POST['item_kode'] ?? [];
     $harga = $_POST['item_harga_satuan'] ?? [];
 
-    foreach ($ids as $i => $itemId) {
-        $val = (int)($received[$i] ?? 0);
-        $itemKode = trim($kodes[$i] ?? '');
-        $itemHarga = (float) ($harga[$i] ?? 0);
-        $stmt = $db->prepare("UPDATE k3_items SET quantity_received = ?, kode = ?, harga_satuan = ? WHERE id = ?");
-        $stmt->execute([$val, $itemKode, $itemHarga, $itemId]);
+    try {
+        $db->beginTransaction();
+
+        $k3Id = null;
+        if (!empty($ids)) {
+            $stmt = $db->prepare("SELECT k3_id FROM k3_items WHERE id = ?");
+            $stmt->execute([$ids[0]]);
+            $k3Id = $stmt->fetchColumn();
+        }
+
+        foreach ($ids as $i => $itemId) {
+            $val = (int)($received[$i] ?? 0);
+            $itemKode = trim($kodes[$i] ?? '');
+            $itemHarga = (float) ($harga[$i] ?? 0);
+            $stmt = $db->prepare("UPDATE k3_items SET quantity_received = ?, kode = ?, harga_satuan = ? WHERE id = ?");
+            $stmt->execute([$val, $itemKode, $itemHarga, $itemId]);
+        }
+
+        if ($k3Id) {
+            $stmt = $db->prepare("SELECT quantity_returned, quantity_received FROM k3_items WHERE k3_id = ?");
+            $stmt->execute([$k3Id]);
+            $allItems = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $allCompleted = true;
+            $anyReceived = false;
+
+            foreach ($allItems as $item) {
+                $req = (int)($item['quantity_returned'] ?? 0);
+                $recv = (int)($item['quantity_received'] ?? 0);
+
+                if ($recv < $req) {
+                    $allCompleted = false;
+                }
+                if ($recv > 0) {
+                    $anyReceived = true;
+                }
+            }
+
+            $newStatus = 'belum_jalan';
+            if ($allCompleted) {
+                $newStatus = 'selesai';
+            } elseif ($anyReceived) {
+                $newStatus = 'aktif';
+            }
+
+            $stmtUpdateStatus = $db->prepare("UPDATE k3_transactions SET status = ? WHERE id = ?");
+            $stmtUpdateStatus->execute([$newStatus, $k3Id]);
+        }
+
+        $db->commit();
+        $_SESSION['success'] = "Jumlah diterima K3 berhasil disimpan.";
+    } catch (Exception $e) {
+        $db->rollBack();
+        $_SESSION['error'] = "Terjadi kesalahan saat menyimpan data K3: " . $e->getMessage();
     }
 
-    $_SESSION['success'] = "Jumlah diterima berhasil disimpan.";
     header("Location: index.php?page=k3&tug=" . urlencode($tug));
     exit();
 }

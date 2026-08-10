@@ -15,6 +15,14 @@ if (isset($_POST['create_k7'])) {
     $tanggal = $_POST['tanggal_diminta'] ?? date('Y-m-d');
     $vendorId = isVendor() ? currentVendorId() : ($_POST['vendor_id'] ?? null);
 
+    // Cek status vendor (aktif/nonaktif)
+    $v = getVendorById($db, $vendorId);
+    if (!$v || ($v['status'] ?? 'aktif') !== 'aktif') {
+        $_SESSION['error'] = "Vendor Anda saat ini berstatus Nonaktif. Pengajuan surat baru tidak dapat dilakukan. Anda masih dapat melihat riwayat transaksi.";
+        header("Location: index.php?page=k7");
+        exit();
+    }
+
     $spk = trim($_POST['spk_number'] ?? '');
     $jenis = trim($_POST['jenis_pekerjaan'] ?? '');
     $idpel = trim($_POST['idpel'] ?? '');
@@ -114,13 +122,60 @@ if (isset($_POST['update_k7_received'])) {
     $ids = $_POST['item_id'] ?? [];
     $received = $_POST['item_received'] ?? [];
 
-    foreach ($ids as $i => $itemId) {
-        $val = (int)($received[$i] ?? 0);
-        $stmt = $db->prepare("UPDATE k7_items SET quantity_received = ? WHERE id = ?");
-        $stmt->execute([$val, $itemId]);
+    try {
+        $db->beginTransaction();
+
+        $k7Id = null;
+        if (!empty($ids)) {
+            $stmt = $db->prepare("SELECT k7_id FROM k7_items WHERE id = ?");
+            $stmt->execute([$ids[0]]);
+            $k7Id = $stmt->fetchColumn();
+        }
+
+        foreach ($ids as $i => $itemId) {
+            $val = (int)($received[$i] ?? 0);
+            $stmt = $db->prepare("UPDATE k7_items SET quantity_received = ? WHERE id = ?");
+            $stmt->execute([$val, $itemId]);
+        }
+
+        if ($k7Id) {
+            $stmt = $db->prepare("SELECT quantity_requested, quantity_received FROM k7_items WHERE k7_id = ?");
+            $stmt->execute([$k7Id]);
+            $allItems = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $allCompleted = true;
+            $anyReceived = false;
+
+            foreach ($allItems as $item) {
+                $req = (int)($item['quantity_requested'] ?? 0);
+                $recv = (int)($item['quantity_received'] ?? 0);
+
+                if ($recv < $req) {
+                    $allCompleted = false;
+                }
+                if ($recv > 0) {
+                    $anyReceived = true;
+                }
+            }
+
+            $newStatus = 'belum_jalan';
+            if ($allCompleted) {
+                $newStatus = 'selesai';
+            } elseif ($anyReceived) {
+                $newStatus = 'aktif';
+            }
+
+            $stmtUpdateStatus = $db->prepare("UPDATE k7_transactions SET status = ? WHERE id = ?");
+            $stmtUpdateStatus->execute([$newStatus, $k7Id]);
+        }
+
+        $db->commit();
+        $_SESSION['success'] = "Jumlah diterima K7 berhasil disimpan.";
+    } catch (Exception $e) {
+        $db->rollBack();
+        $_SESSION['error'] = "Terjadi kesalahan saat menyimpan data K7: " . $e->getMessage();
     }
 
-    $_SESSION['success'] = "Jumlah diterima berhasil disimpan.";
     header("Location: index.php?page=k7&tug=" . urlencode($tug));
     exit();
 }

@@ -21,6 +21,14 @@ if (isset($_POST['create_dpb'])) {
         $vendorId = $_POST['vendor_id'] ?? null;
     }
 
+    // Cek status vendor (aktif/nonaktif)
+    $v = getVendorById($db, $vendorId);
+    if (!$v || ($v['status'] ?? 'aktif') !== 'aktif') {
+        $_SESSION['error'] = "Vendor Anda saat ini berstatus Nonaktif. Pengajuan surat baru tidak dapat dilakukan. Anda masih dapat melihat riwayat transaksi.";
+        header("Location: index.php?page=dpb");
+        exit();
+    }
+
     $spk = trim($_POST['spk_number'] ?? '');
     $jenis = trim($_POST['jenis_pekerjaan'] ?? '');
     $idpel = trim($_POST['idpel'] ?? '');
@@ -121,13 +129,77 @@ if (isset($_POST['update_received'])) {
     $ids = $_POST['item_id'] ?? [];
     $received = $_POST['item_received'] ?? [];
 
-    foreach ($ids as $i => $itemId) {
-        $val = (int)($received[$i] ?? 0);
-        $stmt = $db->prepare("UPDATE dpb_items SET quantity_received = ? WHERE id = ?");
-        $stmt->execute([$val, $itemId]);
+    try {
+        $db->beginTransaction();
+
+        $dpbId = null;
+        if (!empty($ids)) {
+            $stmt = $db->prepare("SELECT dpb_id FROM dpb_items WHERE id = ?");
+            $stmt->execute([$ids[0]]);
+            $dpbId = $stmt->fetchColumn();
+        }
+
+        foreach ($ids as $i => $itemId) {
+            $newVal = max(0, (int)($received[$i] ?? 0));
+
+            $stmt = $db->prepare("SELECT quantity_received, material_id FROM dpb_items WHERE id = ?");
+            $stmt->execute([$itemId]);
+            $oldRow = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($oldRow) {
+                $oldVal = (int)($oldRow['quantity_received'] ?? 0);
+                $materialId = $oldRow['material_id'];
+
+                $difference = $newVal - $oldVal;
+
+                if ($difference !== 0) {
+                    $stmtUpdateStock = $db->prepare("UPDATE materials SET stock = stock - ? WHERE id = ?");
+                    $stmtUpdateStock->execute([$difference, $materialId]);
+                }
+
+                $stmtUpdateItem = $db->prepare("UPDATE dpb_items SET quantity_received = ? WHERE id = ?");
+                $stmtUpdateItem->execute([$newVal, $itemId]);
+            }
+        }
+
+        if ($dpbId) {
+            $stmt = $db->prepare("SELECT quantity_requested, quantity_received FROM dpb_items WHERE dpb_id = ?");
+            $stmt->execute([$dpbId]);
+            $allItems = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $allCompleted = true;
+            $anyReceived = false;
+
+            foreach ($allItems as $item) {
+                $req = (int)($item['quantity_requested'] ?? 0);
+                $recv = (int)($item['quantity_received'] ?? 0);
+
+                if ($recv < $req) {
+                    $allCompleted = false;
+                }
+                if ($recv > 0) {
+                    $anyReceived = true;
+                }
+            }
+
+            $newStatus = 'belum_jalan';
+            if ($allCompleted) {
+                $newStatus = 'selesai';
+            } elseif ($anyReceived) {
+                $newStatus = 'aktif';
+            }
+
+            $stmtUpdateStatus = $db->prepare("UPDATE dpb_transactions SET status = ? WHERE id = ?");
+            $stmtUpdateStatus->execute([$newStatus, $dpbId]);
+        }
+
+        $db->commit();
+        $_SESSION['success'] = "Jumlah diterima dan penyesuaian stok berhasil disimpan.";
+    } catch (Exception $e) {
+        $db->rollBack();
+        $_SESSION['error'] = "Terjadi kesalahan saat menyimpan data: " . $e->getMessage();
     }
 
-    $_SESSION['success'] = "Jumlah diterima berhasil disimpan.";
     header("Location: index.php?page=dpb&tug=" . urlencode($tug));
     exit();
 }

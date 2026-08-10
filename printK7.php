@@ -52,9 +52,9 @@ $tugBig = $tugParts[0] ?? 'TUG';
   .info-line .info-colon { flex-shrink:0; width:12px; }
   .info-line .info-value { flex:1; }
   * { box-sizing:border-box; }
-  @page { size: A4; margin: 10mm; }
+  @page { size: A4 landscape; margin: 10mm; }
   body { font-family: Arial, Helvetica, sans-serif; font-size:11px; color:#000; margin:0; padding:20px; background:#ddd; }
-  .toolbar { max-width:1000px; margin:0 auto 12px; display:flex; gap:10px; }
+  .toolbar { max-width:1080px; margin:0 auto 12px; display:flex; gap:10px; }
   .toolbar button, .toolbar a {
     font-size:14px; padding:8px 18px; border-radius:30px; border:none; cursor:pointer;
     font-weight:700; text-decoration:none; display:inline-flex; align-items:center;
@@ -62,7 +62,7 @@ $tugBig = $tugParts[0] ?? 'TUG';
   .btn-print { background:#ffd966; color:#082038; }
   .btn-back { background:#eee; color:#333; }
 
-  .sheet { background:#fff; max-width:1000px; margin:0 auto; border:1px solid #333; }
+  .sheet { background:#fff; max-width:1080px; margin:0 auto; border:1px solid #333; }
   table.frame { width:100%; border-collapse:collapse; }
   table.frame td { border:1px solid #333; padding:4px 8px; vertical-align:top; }
 
@@ -85,10 +85,25 @@ $tugBig = $tugParts[0] ?? 'TUG';
 
   .kj-box { display:inline-block; border:1px solid #333; width:15px; height:15px; margin-right:2px; }
 
+  .header-section {
+    background-color: #fff0f0 !important; /* Merah muda pastel */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    padding: 16px 20px;
+    border-radius: 12px;
+    margin-bottom: 15px;
+    border: 1px solid #ffccc7;
+  }
+  .header-section table.frame, 
+  .header-section table.frame td {
+    background: transparent !important;
+  }
+
   @media print {
     body { background:#fff; padding:0; }
     .toolbar { display:none; }
     .sheet { border:none; }
+    .header-section { border: 1px solid #ffccc7; }
   }
 </style>
 </head>
@@ -101,56 +116,58 @@ $tugBig = $tugParts[0] ?? 'TUG';
 
 <div class="sheet">
 
-  <table class="frame">
-    <tr>
-      <td class="tug-title" rowspan="3" style="width:13%; vertical-align:middle;">
-        <div style="font-size:11px; font-weight:700; text-align:left;">KODE 7</div>
-        <?= htmlspecialchars($tugBig) ?>
-      </td>
-      <td class="title-cell" style="width:57%;">
-        <div style="font-size:11px; font-weight:700;">PT. PLN (PERSERO) UID JATIM UP3 MALANG</div>
-        <h1>BON PEMAKAIAN</h1>
-      </td>
-      <td class="tug-box" rowspan="3" style="width:30%; vertical-align:middle;">
-        <div class="tug-number"><?= htmlspecialchars($k7['tug_number']) ?></div>
-      </td>
-    </tr>
-    <tr>
-      <td style="font-size:9.5px;">
-        Tanggal<br>diminta
-        <table class="date-grid" style="margin-top:2px;">
-          <tr><td>Tgl.</td><td>Bln.</td><td>Thn.</td></tr>
-          <tr style="font-weight:700;"><td><?= date('d', $d) ?></td><td><?= date('m', $d) ?></td><td><?= date('Y', $d) ?></td></tr>
-        </table>
-      </td>
-    </tr>
-    <tr>
-      <td style="font-size:9.5px;">
-        Tanggal<br>diberikan
-        <table class="date-grid" style="margin-top:2px;">
-          <tr><td>Tgl.</td><td>Bln.</td><td>Thn.</td></tr>
-          <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
-        </table>
-      </td>
-    </tr>
-  </table>
+  <div class="header-section">
+    <table class="frame">
+      <tr>
+        <td class="tug-title" rowspan="3" style="width:13%; vertical-align:middle;">
+          <div style="font-size:11px; font-weight:700; text-align:left;">KODE 7</div>
+          <?= htmlspecialchars($tugBig) ?>
+        </td>
+        <td class="title-cell" style="width:57%;">
+          <div style="font-size:11px; font-weight:700;">PT. PLN (PERSERO) UID JATIM UP3 MALANG</div>
+          <h1>BON PEMAKAIAN</h1>
+        </td>
+        <td class="tug-box" rowspan="3" style="width:30%; vertical-align:middle;">
+          <div class="tug-number"><?= htmlspecialchars($k7['tug_number']) ?></div>
+        </td>
+      </tr>
+      <tr>
+        <td style="font-size:9.5px;">
+          Tanggal<br>diminta
+          <table class="date-grid" style="margin-top:2px;">
+            <tr><td>Tgl.</td><td>Bln.</td><td>Thn.</td></tr>
+            <tr style="font-weight:700;"><td><?= date('d', $d) ?></td><td><?= date('m', $d) ?></td><td><?= date('Y', $d) ?></td></tr>
+          </table>
+        </td>
+      </tr>
+      <tr>
+        <td style="font-size:9.5px;">
+          Tanggal<br>diberikan
+          <table class="date-grid" style="margin-top:2px;">
+            <tr><td>Tgl.</td><td>Bln.</td><td>Thn.</td></tr>
+            <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+          </table>
+        </td>
+      </tr>
+    </table>
 
-  <table class="frame" style="margin-top:-1px;">
-    <tr>
-      <td style="width:57%;">
-        Kepada &nbsp;: PT PLN (Persero) UP3 Malang<br>
-        Gudang &nbsp;: Gudang PLN Aries Munandar<br>
-        Alamat &nbsp;: Jl. Aries Munandar No. 77A Malang
-      </td>
-      <td style="width:43%;">
-        Harap dikirim ke :<br>
-        <strong><?= htmlspecialchars($k7['vendor_name'] ?: '-') ?></strong><br>
-        <?= htmlspecialchars($k7['vendor_address'] ?: '') ?><br>
-        <span style="font-size:9.5px;">Kode Jurnal</span><br>
-        <?php for ($i = 0; $i < 6; $i++): ?><span class="kj-box"></span><?php endfor; ?>
-      </td>
-    </tr>
-  </table>
+    <table class="frame" style="margin-top:-1px;">
+      <tr>
+        <td style="width:57%;">
+          Kepada &nbsp;: PT PLN (Persero) UP3 Malang<br>
+          Gudang &nbsp;: Gudang PLN Aries Munandar<br>
+          Alamat &nbsp;: Jl. Aries Munandar No. 77A Malang
+        </td>
+        <td style="width:43%;">
+          Harap dikirim ke :<br>
+          <strong><?= htmlspecialchars($k7['vendor_name'] ?: '-') ?></strong><br>
+          <?= htmlspecialchars($k7['vendor_address'] ?: '') ?><br>
+          <span style="font-size:9.5px;">Kode Jurnal</span><br>
+          <?php for ($i = 0; $i < 6; $i++): ?><span class="kj-box"></span><?php endfor; ?>
+        </td>
+      </tr>
+    </table>
+  </div>
 
   <table class="items">
     <tr>
