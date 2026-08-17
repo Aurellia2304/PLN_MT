@@ -110,8 +110,11 @@ $tugBig = $tugParts[0] ?? 'TUG';
   <table class="frame header-section">
     <tr>
       <td class="tug-title" rowspan="3" style="width:13%; vertical-align:middle;"><?= htmlspecialchars($tugBig) ?></td>
-      <td class="title-cell" style="width:57%;">
-        <div style="font-size:11px; font-weight:700;">PT. PLN (PERSERO) UID JATIM UP3 MALANG</div>
+      <td class="title-cell" style="width:57%; vertical-align:middle;">
+        <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:4px;">
+          <img src="images/logoPln.png?v=2" style="width:36px; height:auto; vertical-align:middle;">
+          <div style="font-size:11px; font-weight:700; text-align:left;">PT. PLN (PERSERO) UID JATIM<br>UP3 MALANG</div>
+        </div>
         <h1>DAFTAR PERMINTAAN MATERIAL</h1>
       </td>
       <td class="tug-box" rowspan="3" style="width:30%; vertical-align:middle;">
@@ -246,15 +249,15 @@ $tugBig = $tugParts[0] ?? 'TUG';
       <td style="width:25%;">
         <div class="sign-role">Setuju :</div>
         <div style="text-align:center; font-size:9.5px;">Asman Konstruksi</div>
-        <div class="sign-name"><?= htmlspecialchars(DEFAULT_SIGNER_SETUJU) ?></div>
+        <div class="sign-name"><?= htmlspecialchars($dpb['setuju_name'] ?? '') ?></div>
       </td>
       <td style="width:25%;">
         <div class="sign-role">Kepala Gudang :</div>
-        <div class="sign-name"><?= htmlspecialchars(DEFAULT_SIGNER_KEPALA_GUDANG) ?></div>
+        <div class="sign-name"><?= htmlspecialchars($dpb['kepala_gudang_name'] ?? '') ?></div>
       </td>
       <td style="width:25%;">
         <div class="sign-role">Pemeriksa &nbsp;&nbsp;Pengawas</div>
-        <div class="sign-name">&nbsp;</div>
+        <div class="sign-name"><?= htmlspecialchars($dpb['pemeriksa_pengawas_name'] ?? '') ?>&nbsp;</div>
       </td>
       <td style="width:25%;">
         <div class="sign-role">Penerima : <?= htmlspecialchars($dpb['vendor_name'] ?: '') ?></div>

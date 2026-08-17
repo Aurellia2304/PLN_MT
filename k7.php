@@ -122,15 +122,26 @@ if (isset($_POST['update_k7_received'])) {
     $ids = $_POST['item_id'] ?? [];
     $received = $_POST['item_received'] ?? [];
 
+    $k7Id = null;
+    if (!empty($ids)) {
+        $stmt = $db->prepare("SELECT k7_id FROM k7_items WHERE id = ?");
+        $stmt->execute([$ids[0]]);
+        $k7Id = $stmt->fetchColumn();
+    }
+
+    if ($k7Id) {
+        $stmtCheck = $db->prepare("SELECT status FROM k7_transactions WHERE id = ?");
+        $stmtCheck->execute([$k7Id]);
+        $currentStatus = $stmtCheck->fetchColumn();
+        if ($currentStatus === 'selesai') {
+            $_SESSION['error'] = "Data surat yang sudah selesai tidak dapat diubah!";
+            header("Location: index.php?page=k7&tug=" . urlencode($tug));
+            exit();
+        }
+    }
+
     try {
         $db->beginTransaction();
-
-        $k7Id = null;
-        if (!empty($ids)) {
-            $stmt = $db->prepare("SELECT k7_id FROM k7_items WHERE id = ?");
-            $stmt->execute([$ids[0]]);
-            $k7Id = $stmt->fetchColumn();
-        }
 
         foreach ($ids as $i => $itemId) {
             $val = (int)($received[$i] ?? 0);
@@ -196,6 +207,16 @@ if (isset($_POST['update_k7_details'])) {
     $nomorSeri = trim($_POST['nomor_seri'] ?? '');
     $keterangan = trim($_POST['keterangan'] ?? '');
 
+    // Cek status K7 saat ini
+    $stmtCheck = $db->prepare("SELECT status FROM k7_transactions WHERE id = ?");
+    $stmtCheck->execute([$id]);
+    $currentStatus = $stmtCheck->fetchColumn();
+    if ($currentStatus === 'selesai') {
+        $_SESSION['error'] = "Data surat yang sudah selesai tidak dapat diubah!";
+        header("Location: index.php?page=k7&tug=" . urlencode($tug));
+        exit();
+    }
+
     $stmt = $db->prepare("UPDATE k7_transactions SET merk_material = ?, nomor_seri = ?, keterangan = ? WHERE id = ?");
     $stmt->execute([$merkMaterial, $nomorSeri, $keterangan, $id]);
 
@@ -220,6 +241,16 @@ if (isset($_POST['update_k7_signers'])) {
     $pemeriksaPengawas = trim($_POST['pemeriksa_pengawas_name'] ?? '');
     $penerima = trim($_POST['penerima_name'] ?? '');
 
+    // Cek status K7 saat ini
+    $stmtCheck = $db->prepare("SELECT status FROM k7_transactions WHERE id = ?");
+    $stmtCheck->execute([$id]);
+    $currentStatus = $stmtCheck->fetchColumn();
+    if ($currentStatus === 'selesai') {
+        $_SESSION['error'] = "Data surat yang sudah selesai tidak dapat diubah!";
+        header("Location: index.php?page=k7&tug=" . urlencode($tug));
+        exit();
+    }
+
     $stmt = $db->prepare("UPDATE k7_transactions SET setuju_name = ?, kepala_gudang_name = ?, pemeriksa_pengawas_name = ?, penerima_name = ? WHERE id = ?");
     $stmt->execute([$setuju, $kepalaGudang, $pemeriksaPengawas, $penerima, $id]);
 
@@ -238,6 +269,17 @@ if (isset($_GET['delete_k7'])) {
         exit();
     }
     $id = $_GET['delete_k7'];
+
+    // Cek status K7 saat ini
+    $stmtCheck = $db->prepare("SELECT status FROM k7_transactions WHERE id = ?");
+    $stmtCheck->execute([$id]);
+    $currentStatus = $stmtCheck->fetchColumn();
+    if ($currentStatus === 'selesai') {
+        $_SESSION['error'] = "Data surat yang sudah selesai tidak dapat dihapus!";
+        header("Location: index.php?page=k7");
+        exit();
+    }
+
     $stmt = $db->prepare("DELETE FROM k7_transactions WHERE id = ?");
     $stmt->execute([$id]);
     $_SESSION['success'] = "Data K7 berhasil dihapus.";

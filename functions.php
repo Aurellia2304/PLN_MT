@@ -124,6 +124,38 @@ function generateNorm($name) {
     return strtoupper(substr(md5($name), 0, 7));
 }
 
+function generateNextSuratJalanNumber($db, $tanggal) {
+    $d = strtotime($tanggal);
+    $ROMAWI_BULAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
+    $bulanRomawi = $ROMAWI_BULAN[(int)date('n', $d) - 1];
+    $tahun = date('Y', $d);
+    
+    // Ambil seluruh nomor surat jalan yang sesuai untuk mencari nilai seq tertinggi secara akurat
+    $stmt = $db->prepare("
+        SELECT surat_jalan_number 
+        FROM dpb_transactions 
+        WHERE surat_jalan_number LIKE '%/LOG.08.03/GD. ARIES/%'
+    ");
+    $stmt->execute();
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    $maxSeq = -1;
+    foreach ($rows as $row) {
+        $num = $row['surat_jalan_number'];
+        $parts = explode('/', $num);
+        if (count($parts) > 0) {
+            $seq = (int)$parts[0];
+            if ($seq > $maxSeq) {
+                $maxSeq = $seq;
+            }
+        }
+    }
+    
+    $nextSeq = $maxSeq + 1;
+    
+    return sprintf('%04d', $nextSeq) . "/LOG.08.03/GD. ARIES/" . $bulanRomawi . "/" . $tahun;
+}
+
 // ---------- DPB ----------
 // Ambil 1 transaksi DPB lengkap berdasarkan nomor TUG (pencarian otomatis)
 function getDpbByTug($db, $tug) {
@@ -151,12 +183,10 @@ function getDpbByTug($db, $tug) {
 
 function dpbStatusLabel($status) {
     switch ($status) {
-        case 'menunggu_persetujuan': return 'Menunggu Persetujuan';
-        case 'ditolak':     return 'Ditolak';
-        case 'aktif':       return 'Sudah Jalan / Aktif';
         case 'selesai':     return 'Selesai';
+        case 'aktif':       return 'Belum Selesai';
         case 'belum_jalan':
-        default:            return 'Belum Jalan';
+        default:            return 'Aktif';
     }
 }
 
@@ -395,5 +425,54 @@ function renderPhpPagination($currentPage, $totalPages, $urlParamName) {
     
     $html .= '</div>';
     return $html;
+}
+
+function generateNextManualSuratJalanNumber($db, $tanggal) {
+    return generateNextSuratJalanNumber($db, $tanggal);
+}
+
+function isMaterialWajibSN($name) {
+    $whitelist = [
+        'MTR;kWH E-PR;;1P;230V;5-60A;1;;2W',
+        'MTR;kWH E;;1P;230V;5-60A;1;;2W',
+        'MCB;230/400V;1P;2A;50Hz;',
+        'MCB;230/400V;1P;4A;50Hz;',
+        'MCB;230/400V;1P;6A;50Hz;',
+        'MCB;230/400V;1P;10A;50Hz;',
+        'MCB;230/400V;1P;16A;50Hz;',
+        'MCB;230/400V;1P;20A;50Hz;',
+        'MCB;230/400V;1P;25A;50Hz;',
+        'MCB;230/400V;1P;35A;50Hz;',
+        'MCB;230/400V;1P;50A;50Hz;',
+        'MCB;230/400V;3P;20A;50Hz;',
+        'MTR;kWH E;;3P;230/400V;5-80A;1;;4W',
+        'MCB;230/400V;3P;35A;50Hz;',
+        'MTR;kWHE;;3P;57.7/100V-230/400;5A;0.5;4W',
+        'MCB;230/400V;3P;16A;50Hz;',
+        'MTR;kWH E-PR;;3P;230/400V;5-80A;1;;4W',
+        'MCB;230/400V;3P;25A;50Hz;',
+        'TRF DIS;D3;20kV/400V;3P;100kVA;YZN5;OD',
+        'TRF DIS;D3;20kV/400V;3P;160kVA;YZN5;OD',
+        'TRF DIS;D3;20kV/400V;3P;250kVA;DYN5;OD',
+        'MCB;230/400V;3P;10A;50Hz;',
+        'LVSB;DIST;3P;400V;250A;2LINE;OD',
+        'LVSB;DIST;3P;400V;400A;4LINE;OD',
+        'BOX 53KVA - BOX;APPMCCB80A+STRIP;AL2MM;1205X420X250',
+        'BOX 66KVA - BOX;APPMCCB100A+STRIP;AL2MM;1205X420X250',
+        'BOX 82,5 KVA - BOX;APPMCCB125A+STRIP;AL2MM;1205X420X250',
+        'BOX 105 KVA - BOX;APPMCCB160A+STRIP;AL2MM;1205X420X250',
+        'BOX 131 KVA - BOX;APPMCCB200A+STRIP;AL2MM;1205X420X250',
+        'BOX 147 KVA - BOX;APPMCCB225A+STRIP;AL2MM;1205X420X250',
+        'BOX 164 KVA - BOX;APPMCCB250A+STRIP;AL2MM;1205X420X250',
+        'BOX 197 KVA - BOX;APPMCCB300A+STRIP;AL2MM;1205X420X250',
+        'BOX TR - BOX;APP PL CB;AL1.6MM;650X400X220MM'
+    ];
+    $normalizedName = trim(strtoupper($name));
+    foreach ($whitelist as $item) {
+        if (trim(strtoupper($item)) === $normalizedName) {
+            return true;
+        }
+    }
+    return false;
 }
 ?>

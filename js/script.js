@@ -266,7 +266,7 @@ function renderMaterialTable(list) {
 function renderMaterialPage() {
   var container = document.getElementById("materialListContainer");
   if (!container) return;
-  var isAdmin = window.IS_ADMIN === true;
+  var isAdmin = window.IS_REAL_ADMIN === true;
   var list = materialActiveList;
 
   if (list.length === 0) {
@@ -637,33 +637,25 @@ function addGenericItemRow(wrapId, rowPrefix, prefill) {
   row.className = "flex-row dpb-item-row";
   row.id = rowPrefix + idx;
   row.innerHTML =
-    '<div class="form-group" style="flex:2;">' +
+    '<div class="form-group" style="flex:3; min-width:150px;">' +
     "<label>Nama Material</label>" +
-    '<input type="text" list="materialNameList" name="item_material_name[]" autocomplete="off" placeholder="ketik nama..." oninput="onMaterialFieldInput(\'' +
-    row.id +
-    "', 'name')\" onchange=\"onMaterialFieldInput('" +
-    row.id +
-    "', 'name')\">" +
+    '<input type="text" name="item_material_name[]" autocomplete="off" placeholder="ketik nama...">' +
     "</div>" +
-    '<div class="form-group">' +
+    '<div class="form-group" style="flex:2; min-width:120px;">' +
     "<label>Normalisasi</label>" +
-    '<input type="text" list="materialNormList" name="item_material_norm[]" autocomplete="off" placeholder="atau ketik kode..." oninput="onMaterialFieldInput(\'' +
-    row.id +
-    "', 'norm')\" onchange=\"onMaterialFieldInput('" +
-    row.id +
-    "', 'norm')\">" +
+    '<input type="text" name="item_material_norm[]" autocomplete="off" placeholder="atau ketik kode...">' +
     "</div>" +
-    '<div class="form-group" style="max-width:100px;">' +
+    '<div class="form-group" style="flex:1; min-width:70px; max-width:90px;">' +
     "<label>Satuan</label>" +
-    '<input type="text" name="item_unit_display[]" readonly>' +
+    '<input type="text" name="item_unit_display[]" readonly style="background:#f1f5f9; color:#64748b;">' +
     "</div>" +
-    '<div class="form-group" style="max-width:110px;">' +
+    '<div class="form-group" style="flex:1; min-width:80px; max-width:100px;">' +
     "<label>Jumlah</label>" +
     '<input type="number" step="any" min="0" name="item_qty[]" value="' +
     (prefill && prefill.qty ? prefill.qty : "") +
     '" required>' +
     "</div>" +
-    '<button type="button" class="btn-danger" style="height:2.6rem; align-self:flex-end;" onclick="removeDpbItemRow(\'' +
+    '<button type="button" class="btn-danger" style="height:2.6rem; align-self:flex-end; margin-bottom:0; flex:0 0 auto;" onclick="removeDpbItemRow(\'' +
     row.id +
     '\')"><i class="fas fa-trash"></i></button>';
 
@@ -694,19 +686,11 @@ function addK3ItemRow(prefill) {
   row.innerHTML =
     '<div class="form-group" style="flex:2;">' +
     "<label>Nama Material</label>" +
-    '<input type="text" list="materialNameList" name="item_material_name[]" autocomplete="off" placeholder="ketik nama..." oninput="onMaterialFieldInput(\'' +
-    row.id +
-    "', 'name')\" onchange=\"onMaterialFieldInput('" +
-    row.id +
-    "', 'name')\">" +
+    '<input type="text" name="item_material_name[]" autocomplete="off" placeholder="ketik nama...">' +
     "</div>" +
     '<div class="form-group">' +
     "<label>Normalisasi</label>" +
-    '<input type="text" list="materialNormList" name="item_material_norm[]" autocomplete="off" placeholder="atau ketik kode..." oninput="onMaterialFieldInput(\'' +
-    row.id +
-    "', 'norm')\" onchange=\"onMaterialFieldInput('" +
-    row.id +
-    "', 'norm')\">" +
+    '<input type="text" name="item_material_norm[]" autocomplete="off" placeholder="atau ketik kode...">' +
     "</div>" +
     '<div class="form-group" style="max-width:100px;">' +
     "<label>Satuan</label>" +
@@ -758,26 +742,11 @@ function removeDpbItemRow(rowId) {
 // bangun <datalist> global sekali saja, dari gabungan materials DB + data/normalisasi.csv
 function ensureMaterialDatalists() {
   if (document.getElementById("materialNameList")) return;
-  var data = getCombinedMaterialData();
-  if (!data.length) return;
 
   var nameList = document.createElement("datalist");
   nameList.id = "materialNameList";
   var normList = document.createElement("datalist");
   normList.id = "materialNormList";
-
-  data.forEach(function (m) {
-    if (m.name) {
-      var o1 = document.createElement("option");
-      o1.value = m.name;
-      nameList.appendChild(o1);
-    }
-    if (m.norm) {
-      var o2 = document.createElement("option");
-      o2.value = m.norm;
-      normList.appendChild(o2);
-    }
-  });
 
   document.body.appendChild(nameList);
   document.body.appendChild(normList);
@@ -889,16 +858,25 @@ function loadDPB() {
               : data.status === "ditolak"
                 ? "status-ditolak"
                 : "status-belum";
+      var isReadOnly = !window.IS_ADMIN || (data.status === "selesai");
 
       var items = (data.items || [])
         .map(function (it, i) {
-          var receivedCell = window.IS_ADMIN
-            ? '<input type="number" step="any" min="0" name="item_received[]" value="' +
+          var receivedCell = "";
+          var snCell = "";
+          
+          if (isReadOnly) {
+            receivedCell = String(it.quantity_received ?? "0");
+            snCell = escapeHtml(it.sn || "-");
+          } else {
+            receivedCell = '<input type="number" step="any" min="0" name="item_received[]" value="' +
               (it.quantity_received ?? 0) +
-              '" style="width:80px;"><input type="hidden" name="item_id[]" value="' +
+              '" style="width:80px;" class="item-recv-input"><input type="hidden" name="item_id[]" value="' +
               it.id +
-              '">'
-            : String(it.quantity_received ?? "-");
+              '">';
+            snCell = '<div class="sn-cell-container" data-material-name="' + escapeHtml(it.material_name || '') + '" data-item-id="' + it.id + '" data-saved-sn="' + escapeHtml(it.sn || '') + '"></div>';
+          }
+
           return (
             "<tr><td>" +
             (i + 1) +
@@ -912,28 +890,33 @@ function loadDPB() {
             (it.quantity_requested ?? "-") +
             "</td><td>" +
             receivedCell +
+            "</td><td>" +
+            snCell +
             "</td></tr>"
           );
         })
         .join("");
 
-      var adminReceivedForm = window.IS_ADMIN
-        ? '<form method="POST" action="dpb.php" style="margin-top:0.8rem;">' +
+      var adminReceivedForm = "";
+      if (isReadOnly) {
+        adminReceivedForm = '<div class="table-wrap"><table><thead><tr><th>#</th><th>Material</th><th>Norm</th><th>Satuan</th><th>Diminta</th><th>Diterima</th><th>SN</th></tr></thead>' +
+          "<tbody>" +
+          items +
+          "</tbody></table></div>";
+      } else {
+        adminReceivedForm = '<form method="POST" action="dpb.php" id="dpbUpdateReceivedForm" style="margin-top:0.8rem;">' +
           '<input type="hidden" name="dpb_id" value="' +
           data.id +
           '"><input type="hidden" name="tug_number" value="' +
           escapeHtml(data.tug_number) +
           '">' +
-          '<div class="table-wrap"><table><thead><tr><th>#</th><th>Material</th><th>Norm</th><th>Satuan</th><th>Diminta</th><th>Diterima</th></tr></thead>' +
+          '<div class="table-wrap"><table><thead><tr><th>#</th><th>Material</th><th>Norm</th><th>Satuan</th><th>Diminta</th><th>Diterima</th><th>SN</th></tr></thead>' +
           "<tbody>" +
           items +
           "</tbody></table></div>" +
           '<button type="submit" name="update_received" class="btn-success" style="margin-top:0.6rem;">Simpan Jumlah Diterima</button>' +
-          "</form>"
-        : '<div class="table-wrap"><table><thead><tr><th>#</th><th>Material</th><th>Norm</th><th>Satuan</th><th>Diminta</th><th>Diterima</th></tr></thead>' +
-          "<tbody>" +
-          items +
-          "</tbody></table></div>";
+          "</form>";
+      }
 
       var deleteBtn =
         '<a href="dpb.php?delete_dpb=' +
@@ -958,9 +941,16 @@ function loadDPB() {
             "</form>" +
             deleteBtn +
             "</div>"
-          : '<div style="margin-top:0.8rem; display:flex; gap:0.6rem; align-items:flex-end; flex-wrap:wrap;">' +
+          : '<div style="margin-top:0.8rem; display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-end;">' +
             deleteBtn +
             "</div>";
+
+      var sjNumberHtml = "";
+      if (data.surat_jalan_number) {
+        sjNumberHtml = "<p style='margin:0.5rem 0 0 0;'><strong>No. Surat Jalan:</strong> <span style='font-size:1.15rem; color:#0b2b4a; font-weight:700;'>" + escapeHtml(data.surat_jalan_number) + "</span></p>";
+      } else if (data.next_surat_jalan_number) {
+        sjNumberHtml = "<p style='margin:0.5rem 0 0 0;'><strong>No. Surat Jalan (Otomatis):</strong> <span style='font-size:1.15rem; color:#64748b; font-weight:700;'>" + escapeHtml(data.next_surat_jalan_number) + "</span></p>";
+      }
 
       result.innerHTML =
         '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.6rem;">' +
@@ -972,6 +962,7 @@ function loadDPB() {
         '">' +
         escapeHtml(data.status_label || "-") +
         "</span></div>" +
+        sjNumberHtml +
         "<p><strong>Vendor:</strong> " +
         escapeHtml(data.vendor_name || "-") +
         "</p>" +
@@ -996,6 +987,9 @@ function loadDPB() {
         '<p class="ttd-mengetahui">Mengetahui,</p>' +
         buildTtdBox(
           [
+            { field: "setuju_name", label: "Setuju" },
+            { field: "kepala_gudang_name", label: "Kepala Gudang" },
+            { field: "pemeriksa_pengawas_name", label: "Pemeriksa / Petugas" },
             { field: "penerima_name", label: "Penerima" },
             { field: "security_name", label: "Security" },
             { field: "menyerahkan_name", label: "Yang Menyerahkan" },
@@ -1009,6 +1003,93 @@ function loadDPB() {
             { field: "malang_tanggal", prefix: "Malang," },
           ],
         );
+
+      if (!isReadOnly) {
+        var snCells = result.querySelectorAll('.sn-cell-container');
+        snCells.forEach(function (cell) {
+          var row = cell.closest('tr');
+          var recvInput = row.querySelector('.item-recv-input');
+          if (recvInput) {
+            var updateHandler = function () {
+              var qty = parseFloat(recvInput.value) || 0;
+              var materialName = cell.getAttribute('data-material-name');
+              var itemId = cell.getAttribute('data-item-id');
+              var savedSnAttr = cell.getAttribute('data-saved-sn') || '';
+              var savedSns = savedSnAttr.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+
+              if (isMaterialWajibSN(materialName)) {
+                if (qty <= 0) {
+                  cell.innerHTML = '<span style="color:#64748b; font-size:11px;">Tidak ada material diterima</span>';
+                } else {
+                  var html = '<div style="display:flex; flex-direction:column; gap:6px; margin:4px 0;">';
+                  for (var j = 0; j < qty; j++) {
+                    var val = savedSns[j] || '';
+                    html += '<div style="display:flex; align-items:center; gap:8px;">' +
+                            '<span style="font-size:11px; color:#64748b; white-space:nowrap;">SN ' + (j + 1) + ':</span>' +
+                            '<input type="text" name="item_sn_' + itemId + '[]" value="' + escapeHtml(val) + '" class="form-control sn-input-field" placeholder="Masukkan SN ' + (j + 1) + '" style="font-size:12px; padding:4px 8px; width:100%; border-radius:6px; border:1px solid #cbd5e1;" required>' +
+                            '</div>';
+                  }
+                  html += '</div>';
+                  cell.innerHTML = html;
+                }
+              } else {
+                var val = savedSns.join(', ');
+                cell.innerHTML = '<input type="text" name="item_sn_' + itemId + '[]" value="' + escapeHtml(val) + '" class="form-control" placeholder="Optional SN" style="font-size:12px; padding:4px 8px; width:100%; border-radius:6px; border:1px solid #cbd5e1;">';
+              }
+            };
+
+            updateHandler();
+            recvInput.addEventListener('input', updateHandler);
+            recvInput.addEventListener('change', updateHandler);
+          }
+        });
+
+        var form = result.querySelector('#dpbUpdateReceivedForm');
+        if (form) {
+          form.addEventListener('submit', function (e) {
+            var inputs = form.querySelectorAll('.item-recv-input');
+            var ok = true;
+            var currentRequestSns = [];
+            inputs.forEach(function (recvInput) {
+              if (!ok) return;
+              var row = recvInput.closest('tr');
+              var cell = row.querySelector('.sn-cell-container');
+              if (cell) {
+                var materialName = cell.getAttribute('data-material-name');
+                var qty = parseFloat(recvInput.value) || 0;
+                if (isMaterialWajibSN(materialName) && qty > 0) {
+                  var snFields = cell.querySelectorAll('.sn-input-field');
+                  if (snFields.length !== qty) {
+                    alert('Jumlah input SN tidak sama dengan jumlah Diterima untuk material: ' + materialName);
+                    e.preventDefault();
+                    ok = false;
+                    return;
+                  }
+                  snFields.forEach(function (f) {
+                    var val = f.value.trim();
+                    if (!val) {
+                      alert('Serial Number (SN) wajib diisi untuk material: ' + materialName);
+                      e.preventDefault();
+                      f.focus();
+                      ok = false;
+                      return;
+                    }
+                    if (currentRequestSns.indexOf(val.toLowerCase()) !== -1) {
+                      alert('Serial Number (SN) "' + val + '" tidak boleh diduplikat dalam satu pengajuan.');
+                      e.preventDefault();
+                      f.focus();
+                      ok = false;
+                      return;
+                    }
+                    currentRequestSns.push(val.toLowerCase());
+                  });
+                }
+              }
+            });
+            return ok;
+          });
+        }
+      }
     })
     .catch(function () {
       result.innerHTML = '<p class="text-small">Gagal memuat data DPB.</p>';
@@ -1224,6 +1305,52 @@ var ROMAWI_BULAN = [
   "XII",
 ];
 
+function isMaterialWajibSN(name) {
+  var whitelist = [
+    'MTR;kWH E-PR;;1P;230V;5-60A;1;;2W',
+    'MTR;kWH E;;1P;230V;5-60A;1;;2W',
+    'MCB;230/400V;1P;2A;50Hz;',
+    'MCB;230/400V;1P;4A;50Hz;',
+    'MCB;230/400V;1P;6A;50Hz;',
+    'MCB;230/400V;1P;10A;50Hz;',
+    'MCB;230/400V;1P;16A;50Hz;',
+    'MCB;230/400V;1P;20A;50Hz;',
+    'MCB;230/400V;1P;25A;50Hz;',
+    'MCB;230/400V;1P;35A;50Hz;',
+    'MCB;230/400V;1P;50A;50Hz;',
+    'MCB;230/400V;3P;20A;50Hz;',
+    'MTR;kWH E;;3P;230/400V;5-80A;1;;4W',
+    'MCB;230/400V;3P;35A;50Hz;',
+    'MTR;kWHE;;3P;57.7/100V-230/400;5A;0.5;4W',
+    'MCB;230/400V;3P;16A;50Hz;',
+    'MTR;kWH E-PR;;3P;230/400V;5-80A;1;;4W',
+    'MCB;230/400V;3P;25A;50Hz;',
+    'TRF DIS;D3;20kV/400V;3P;100kVA;YZN5;OD',
+    'TRF DIS;D3;20kV/400V;3P;160kVA;YZN5;OD',
+    'TRF DIS;D3;20kV/400V;3P;250kVA;DYN5;OD',
+    'MCB;230/400V;3P;10A;50Hz;',
+    'LVSB;DIST;3P;400V;250A;2LINE;OD',
+    'LVSB;DIST;3P;400V;400A;4LINE;OD',
+    'BOX 53KVA - BOX;APPMCCB80A+STRIP;AL2MM;1205X420X250',
+    'BOX 66KVA - BOX;APPMCCB100A+STRIP;AL2MM;1205X420X250',
+    'BOX 82,5 KVA - BOX;APPMCCB125A+STRIP;AL2MM;1205X420X250',
+    'BOX 105 KVA - BOX;APPMCCB160A+STRIP;AL2MM;1205X420X250',
+    'BOX 131 KVA - BOX;APPMCCB200A+STRIP;AL2MM;1205X420X250',
+    'BOX 147 KVA - BOX;APPMCCB225A+STRIP;AL2MM;1205X420X250',
+    'BOX 164 KVA - BOX;APPMCCB250A+STRIP;AL2MM;1205X420X250',
+    'BOX 197 KVA - BOX;APPMCCB300A+STRIP;AL2MM;1205X420X250',
+    'BOX TR - BOX;APP PL CB;AL1.6MM;650X400X220MM'
+  ];
+  if (!name) return false;
+  var normalized = name.trim().toUpperCase();
+  for (var i = 0; i < whitelist.length; i++) {
+    if (whitelist[i].trim().toUpperCase() === normalized) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function dottedLine(width) {
   return (
     '<span style="display:inline-block; border-bottom:1px dotted #000; width:' +
@@ -1233,21 +1360,60 @@ function dottedLine(width) {
 }
 
 function printDPB() {
+  if (!window.IS_ADMIN) {
+    alert("Akses ditolak: Anda tidak diperbolehkan mencetak atau mengunduh Surat Jalan.");
+    return;
+  }
   var data = window.LAST_DPB;
   if (!data) {
     alert("Cari nomor TUG dulu sebelum mencetak.");
     return;
   }
 
+  // Jika belum ada nomor surat jalan, generate dan simpan secara permanen di database lewat AJAX
+  if (!data.surat_jalan_number) {
+    var url = "index.php?ajax=generate_sj&dpb_id=" + encodeURIComponent(data.id);
+    fetch(url)
+      .then(function(res) { return res.json(); })
+      .then(function(resData) {
+        if (resData.surat_jalan_number) {
+          data.surat_jalan_number = resData.surat_jalan_number;
+          // Render ulang No. Surat Jalan pada detail panel di DOM agar terupdate tanpa reload page
+          var sjEl = document.querySelector("#dpbResult");
+          if (sjEl) {
+            // Kita bisa trigger reload detail panel untuk mengupdate UI
+            loadDPB();
+          }
+          // Panggil kembali printDPB setelah nomor tersimpan
+          printDPB();
+        } else {
+          alert("Gagal membuat nomor surat jalan otomatis.");
+        }
+      })
+      .catch(function() {
+        alert("Terjadi kesalahan jaringan saat membuat nomor surat jalan.");
+      });
+    return;
+  }
+
   var d = data.tanggal_diminta ? new Date(data.tanggal_diminta) : new Date();
-  var noSurat =
-    "............. /LOG.00.02/GD. ARIES/" +
-    ROMAWI_BULAN[d.getMonth()] +
-    "/" +
-    d.getFullYear();
+  var noSurat = data.surat_jalan_number;
+
+  function formatDateJS(dateStr) {
+    if (!dateStr) return ".......................";
+    var parts = dateStr.split('-');
+    if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        return parts[2] + '-' + parts[1] + '-' + parts[0];
+      }
+    }
+    return dateStr;
+  }
+  var diterimaTglStr = formatDateJS(data.diterima_tgl);
+  var malangTanggalStr = formatDateJS(data.malang_tanggal);
 
   var items = (data.items || []).slice();
-  while (items.length < 10) items.push({});
+  while (items.length < 5) items.push({});
   var itemRows = items
     .map(function (it, i) {
       var isBlank = !it.material_name;
@@ -1282,7 +1448,7 @@ function printDPB() {
     '<table style="width:100%; border-collapse:collapse; margin-bottom:4px;"><tr>' +
     '<td style="width:65%; vertical-align:top;">' +
     '<table style="border-collapse:collapse;"><tr>' +
-    '<td style="vertical-align:top; padding-right:8px;"><img src="images/logo.png" style="width:42px; height:auto;"></td>' +
+    '<td style="vertical-align:top; padding-right:8px;"><img src="images/logoPln.png" style="width:42px; height:auto;"></td>' +
     '<td style="vertical-align:top; line-height:1.5; padding-top:2px;">' +
     '<div style="font-weight:800; font-size:13px;">PT PLN (PERSERO)</div>' +
     "<div>UNIT INDUK DISTRIBUSI (UID) JAWA TIMUR</div>" +
@@ -1391,10 +1557,10 @@ function printDPB() {
     // ===== FOOTER TTD =====
     '<table style="width:100%; margin-top:16px;"><tr>' +
     "<td>Diterima tgl " +
-    dottedLine("180px") +
+    escapeHtml(diterimaTglStr) +
     "</td>" +
     '<td style="text-align:right;">Malang, ' +
-    dottedLine("180px") +
+    escapeHtml(malangTanggalStr) +
     "</td>" +
     "</tr></table>" +
     '<p style="text-align:center; margin:8px 0;">Mengetahui,</p>' +
@@ -1443,68 +1609,85 @@ function loadK3() {
             ? "status-selesai"
             : "status-belum";
 
-      var items = (data.items || [])
-        .map(function (it, i) {
-          var receivedCell = window.IS_ADMIN
-            ? '<input type="number" step="any" min="0" name="item_received[]" value="' +
-              (it.quantity_received ?? 0) +
-              '" style="width:80px;"><input type="hidden" name="item_id[]" value="' +
-              it.id +
-              '">'
-            : String(it.quantity_received ?? "-");
-          var kodeCell = window.IS_ADMIN
-            ? '<input type="text" name="item_kode[]" value="' +
-              escapeHtml(it.kode || "") +
-              '" style="width:70px;">'
-            : escapeHtml(it.kode || "-");
-          var hargaCell = window.IS_ADMIN
-            ? '<input type="number" step="any" min="0" name="item_harga_satuan[]" value="' +
-              (it.harga_satuan ?? 0) +
-              '" style="width:100px;">'
-            : String(it.harga_satuan ?? "-");
-          return (
-            "<tr><td>" +
-            (i + 1) +
-            "</td><td>" +
-            escapeHtml(it.material_name || "-") +
-            "</td><td>" +
-            escapeHtml(it.norm || "-") +
-            "</td><td>" +
-            escapeHtml(it.unit || "-") +
-            "</td><td>" +
-            (it.quantity_returned ?? "-") +
-            "</td><td>" +
-            receivedCell +
-            "</td><td>" +
-            kodeCell +
-            "</td><td>" +
-            hargaCell +
-            "</td></tr>"
-          );
-        })
-        .join("");
+      var isReadOnly = !window.IS_ADMIN || (data.status === "selesai");
 
-      var adminReceivedForm = window.IS_ADMIN
-        ? '<form method="POST" action="k3.php" style="margin-top:0.8rem;">' +
-          '<input type="hidden" name="k3_id" value="' +
-          data.id +
-          '">' +
-          '<input type="hidden" name="tug_number" value="' +
-          escapeHtml(data.tug_number) +
-          '">' +
-          '<div class="table-wrap"><table><thead><tr><th>#</th><th>Material</th><th>Norm</th><th>Satuan</th><th>Dikembalikan</th><th>Diterima</th><th>Kode</th><th>Harga Satuan</th></tr></thead>' +
-          "<tbody>" +
-          items +
-          "</tbody></table></div>" +
-          '<button type="submit" name="update_k3_received" class="btn-success" style="margin-top:0.6rem;">Simpan Jumlah Diterima</button>' +
-          "</form>"
-        : '<div class="table-wrap"><table><thead><tr><th>#</th><th>Material</th><th>Norm</th><th>Satuan</th><th>Dikembalikan</th><th>Diterima</th><th>Kode</th><th>Harga Satuan</th></tr></thead>' +
-          "<tbody>" +
-          items +
-          "</tbody></table></div>";
+      var adminReceivedForm = "";
+      if (window.IS_ADMIN) {
+        var disabledAttr = isReadOnly ? " disabled" : "";
+        var items = (data.items || [])
+          .map(function (it, i) {
+            var receivedCell = isReadOnly
+              ? String(it.quantity_received ?? "0")
+              : '<input type="number" step="any" min="0" name="item_received[]" value="' + (it.quantity_received ?? 0) + '" style="width:80px;"><input type="hidden" name="item_id[]" value="' + it.id + '">';
+            var kodeCell = isReadOnly
+              ? escapeHtml(it.kode || "-")
+              : '<input type="text" name="item_kode[]" value="' + escapeHtml(it.kode || "") + '" style="width:70px;">';
+            var hargaCell = isReadOnly
+              ? String(it.harga_satuan ?? "0")
+              : '<input type="number" step="any" min="0" name="item_harga_satuan[]" value="' + (it.harga_satuan ?? 0) + '" style="width:100px;">';
+            return (
+              "<tr><td>" +
+              (i + 1) +
+              "</td><td>" +
+              escapeHtml(it.material_name || "-") +
+              "</td><td>" +
+              escapeHtml(it.norm || "-") +
+              "</td><td>" +
+              escapeHtml(it.unit || "-") +
+              "</td><td>" +
+              (it.quantity_returned ?? "-") +
+              "</td><td>" +
+              receivedCell +
+              "</td><td>" +
+              kodeCell +
+              "</td><td>" +
+              hargaCell +
+              "</td></tr>"
+            );
+          })
+          .join("");
 
-      var adminDetailsForm = window.IS_ADMIN
-        ? '<form method="POST" action="k3.php" style="margin-top:0.8rem; background:#f7f9fc; padding:0.8rem; border-radius:14px;">' +
+        var saveBtn = isReadOnly ? "" : '<button type="submit" name="update_k3_received" class="btn-success" style="margin-top:0.6rem;">Simpan Jumlah Diterima</button>';
+        adminReceivedForm = isReadOnly
+          ? '<div class="table-wrap"><table><thead><tr><th>#</th><th>Material</th><th>Norm</th><th>Satuan</th><th>Dikembalikan</th><th>Diterima</th><th>Kode</th><th>Harga Satuan</th></tr></thead><tbody>' + items + '</tbody></table></div>'
+          : '<form method="POST" action="k3.php" style="margin-top:0.8rem;">' +
+            '<input type="hidden" name="k3_id" value="' + data.id + '">' +
+            '<input type="hidden" name="tug_number" value="' + escapeHtml(data.tug_number) + '">' +
+            '<div class="table-wrap"><table><thead><tr><th>#</th><th>Material</th><th>Norm</th><th>Satuan</th><th>Dikembalikan</th><th>Diterima</th><th>Kode</th><th>Harga Satuan</th></tr></thead><tbody>' + items + '</tbody></table></div>' +
+            saveBtn +
+            '</form>';
+      } else {
+        var items = (data.items || [])
+          .map(function (it, i) {
+            return (
+              "<tr><td>" +
+              (i + 1) +
+              "</td><td>" +
+              escapeHtml(it.material_name || "-") +
+              "</td><td>" +
+              escapeHtml(it.norm || "-") +
+              "</td><td>" +
+              escapeHtml(it.unit || "-") +
+              "</td><td>" +
+              (it.quantity_returned ?? "-") +
+              "</td><td>" +
+              String(it.quantity_received ?? "-") +
+              "</td><td>" +
+              escapeHtml(it.kode || "-") +
+              "</td><td>" +
+              String(it.harga_satuan ?? "-") +
+              "</td></tr>"
+            );
+          })
+          .join("");
+        adminReceivedForm = '<div class="table-wrap"><table><thead><tr><th>#</th><th>Material</th><th>Norm</th><th>Satuan</th><th>Dikembalikan</th><th>Diterima</th><th>Kode</th><th>Harga Satuan</th></tr></thead><tbody>' + items + '</tbody></table></div>';
+      }
+
+      var adminDetailsForm = "";
+      if (window.IS_ADMIN) {
+        var disabledAttr = isReadOnly ? " disabled" : "";
+        var saveBtn = isReadOnly ? "" : '<button type="submit" name="update_k3_details" class="btn-success" style="margin-top:0.4rem;">Simpan Detail Bon</button>';
+        adminDetailsForm = '<form method="POST" action="k3.php" style="margin-top:0.8rem; background:#f7f9fc; padding:0.8rem; border-radius:14px;">' +
           '<input type="hidden" name="k3_id" value="' +
           data.id +
           '">' +
@@ -1515,8 +1698,8 @@ function loadK3() {
           '<div class="flex-row">' +
           '<div class="form-group"><label>Nomor Seri</label><input type="text" name="nomor_seri" value="' +
           escapeHtml(data.nomor_seri || "") +
-          '"></div>' +
-          '<div class="form-group"><label>Kondisi Material</label><select name="kondisi_material">' +
+          '"' + disabledAttr + '></div>' +
+          '<div class="form-group"><label>Kondisi Material</label><select name="kondisi_material"' + disabledAttr + '>' +
           ["masih_dapat_dipergunakan", "rusak", "baru", "garansi"]
             .map(function (k) {
               var labels = {
@@ -1539,21 +1722,21 @@ function loadK3() {
           "</select></div>" +
           '<div class="form-group"><label>Keterangan Detile</label><input type="text" name="keterangan" value="' +
           escapeHtml(data.keterangan || "") +
-          '"></div>' +
+          '"' + disabledAttr + '></div>' +
           "</div>" +
           '<div class="flex-row">' +
           '<div class="form-group"><label>No. DPB / Bukti</label><input type="text" name="no_dpb_bukti" value="' +
           escapeHtml(data.no_dpb_bukti || "") +
-          '"></div>' +
+          '"' + disabledAttr + '></div>' +
           '<div class="form-group"><label>Lokasi Penempatan Material/Dipakai</label><input type="text" name="lokasi_penempatan" value="' +
           escapeHtml(data.lokasi_penempatan || "") +
-          '"></div>' +
+          '"' + disabledAttr + '></div>' +
           "</div>" +
-          '<button type="submit" name="update_k3_details" class="btn-success" style="margin-top:0.4rem;">Simpan Detail Bon</button>' +
-          "</form>"
-        : "";
+          saveBtn +
+          "</form>";
+      }
 
-      var adminStatusForm = window.IS_ADMIN
+      var adminStatusForm = (window.IS_ADMIN && !isReadOnly)
         ? '<div style="margin-top:0.8rem; display:flex; gap:0.6rem; align-items:flex-end; flex-wrap:wrap;">' +
           '<a href="k3.php?delete_k3=' +
           data.id +
@@ -1754,54 +1937,71 @@ function loadK7() {
             ? "status-selesai"
             : "status-belum";
 
-      var items = (data.items || [])
-        .map(function (it, i) {
-          var receivedCell = window.IS_ADMIN
-            ? '<input type="number" step="any" min="0" name="item_received[]" value="' +
-              (it.quantity_received ?? 0) +
-              '" style="width:80px;"><input type="hidden" name="item_id[]" value="' +
-              it.id +
-              '">'
-            : String(it.quantity_received ?? "-");
-          return (
-            "<tr><td>" +
-            (i + 1) +
-            "</td><td>" +
-            escapeHtml(it.material_name || "-") +
-            "</td><td>" +
-            escapeHtml(it.norm || "-") +
-            "</td><td>" +
-            escapeHtml(it.unit || "-") +
-            "</td><td>" +
-            (it.quantity_requested ?? "-") +
-            "</td><td>" +
-            receivedCell +
-            "</td></tr>"
-          );
-        })
-        .join("");
+      var isReadOnly = !window.IS_ADMIN || (data.status === "selesai");
 
-      var adminReceivedForm = window.IS_ADMIN
-        ? '<form method="POST" action="k7.php" style="margin-top:0.8rem;">' +
-          '<input type="hidden" name="k7_id" value="' +
-          data.id +
-          '">' +
-          '<input type="hidden" name="tug_number" value="' +
-          escapeHtml(data.tug_number) +
-          '">' +
-          '<div class="table-wrap"><table><thead><tr><th>#</th><th>Material</th><th>Norm</th><th>Satuan</th><th>Diminta</th><th>Diterima</th></tr></thead>' +
-          "<tbody>" +
-          items +
-          "</tbody></table></div>" +
-          '<button type="submit" name="update_k7_received" class="btn-success" style="margin-top:0.6rem;">Simpan Jumlah Diterima</button>' +
-          "</form>"
-        : '<div class="table-wrap"><table><thead><tr><th>#</th><th>Material</th><th>Norm</th><th>Satuan</th><th>Diminta</th><th>Diterima</th></tr></thead>' +
-          "<tbody>" +
-          items +
-          "</tbody></table></div>";
+      var adminReceivedForm = "";
+      if (window.IS_ADMIN) {
+        var disabledAttr = isReadOnly ? " disabled" : "";
+        var items = (data.items || [])
+          .map(function (it, i) {
+            var receivedCell = isReadOnly
+              ? String(it.quantity_received ?? "0")
+              : '<input type="number" step="any" min="0" name="item_received[]" value="' + (it.quantity_received ?? 0) + '" style="width:80px;"><input type="hidden" name="item_id[]" value="' + it.id + '">';
+            return (
+              "<tr><td>" +
+              (i + 1) +
+              "</td><td>" +
+              escapeHtml(it.material_name || "-") +
+              "</td><td>" +
+              escapeHtml(it.norm || "-") +
+              "</td><td>" +
+              escapeHtml(it.unit || "-") +
+              "</td><td>" +
+              (it.quantity_requested ?? "-") +
+              "</td><td>" +
+              receivedCell +
+              "</td></tr>"
+            );
+          })
+          .join("");
 
-      var adminDetailsFormK7 = window.IS_ADMIN
-        ? '<form method="POST" action="k7.php" style="margin-top:0.8rem; background:#f7f9fc; padding:0.8rem; border-radius:14px;">' +
+        var saveBtn = isReadOnly ? "" : '<button type="submit" name="update_k7_received" class="btn-success" style="margin-top:0.6rem;">Simpan Jumlah Diterima</button>';
+        adminReceivedForm = isReadOnly
+          ? '<div class="table-wrap"><table><thead><tr><th>#</th><th>Material</th><th>Norm</th><th>Satuan</th><th>Diminta</th><th>Diterima</th></tr></thead><tbody>' + items + '</tbody></table></div>'
+          : '<form method="POST" action="k7.php" style="margin-top:0.8rem;">' +
+            '<input type="hidden" name="k7_id" value="' + data.id + '">' +
+            '<input type="hidden" name="tug_number" value="' + escapeHtml(data.tug_number) + '">' +
+            '<div class="table-wrap"><table><thead><tr><th>#</th><th>Material</th><th>Norm</th><th>Satuan</th><th>Diminta</th><th>Diterima</th></tr></thead><tbody>' + items + '</tbody></table></div>' +
+            saveBtn +
+            '</form>';
+      } else {
+        var items = (data.items || [])
+          .map(function (it, i) {
+            return (
+              "<tr><td>" +
+              (i + 1) +
+              "</td><td>" +
+              escapeHtml(it.material_name || "-") +
+              "</td><td>" +
+              escapeHtml(it.norm || "-") +
+              "</td><td>" +
+              escapeHtml(it.unit || "-") +
+              "</td><td>" +
+              (it.quantity_requested ?? "-") +
+              "</td><td>" +
+              String(it.quantity_received ?? "-") +
+              "</td></tr>"
+            );
+          })
+          .join("");
+        adminReceivedForm = '<div class="table-wrap"><table><thead><tr><th>#</th><th>Material</th><th>Norm</th><th>Satuan</th><th>Diminta</th><th>Diterima</th></tr></thead><tbody>' + items + '</tbody></table></div>';
+      }
+
+      var adminDetailsFormK7 = "";
+      if (window.IS_ADMIN) {
+        var disabledAttr = isReadOnly ? " disabled" : "";
+        var saveBtn = isReadOnly ? "" : '<button type="submit" name="update_k7_details" class="btn-success" style="margin-top:0.4rem;">Simpan Detail Bon</button>';
+        adminDetailsFormK7 = '<form method="POST" action="k7.php" style="margin-top:0.8rem; background:#f7f9fc; padding:0.8rem; border-radius:14px;">' +
           '<input type="hidden" name="k7_id" value="' +
           data.id +
           '">' +
@@ -1812,19 +2012,19 @@ function loadK7() {
           '<div class="flex-row">' +
           '<div class="form-group"><label>Merk Material</label><input type="text" name="merk_material" value="' +
           escapeHtml(data.merk_material || "") +
-          '"></div>' +
+          '"' + disabledAttr + '></div>' +
           '<div class="form-group"><label>Nomor Seri</label><input type="text" name="nomor_seri" value="' +
           escapeHtml(data.nomor_seri || "") +
-          '"></div>' +
+          '"' + disabledAttr + '></div>' +
           '<div class="form-group"><label>Keterangan</label><input type="text" name="keterangan" value="' +
           escapeHtml(data.keterangan || "") +
-          '"></div>' +
+          '"' + disabledAttr + '></div>' +
           "</div>" +
-          '<button type="submit" name="update_k7_details" class="btn-success" style="margin-top:0.4rem;">Simpan Detail Bon</button>' +
-          "</form>"
-        : "";
+          saveBtn +
+          "</form>";
+      }
 
-      var adminStatusForm = window.IS_ADMIN
+      var adminStatusForm = (window.IS_ADMIN && !isReadOnly)
         ? '<div style="margin-top:0.8rem; display:flex; gap:0.6rem; align-items:flex-end; flex-wrap:wrap;">' +
           '<a href="k7.php?delete_k7=' +
           data.id +
@@ -1992,11 +2192,12 @@ function buildTtdBox(
   submitName,
   prelineFields,
 ) {
+  var isReadOnly = !window.IS_ADMIN || (data.status === "selesai");
   var colsClass = columns.length === 4 ? "cols-4" : "cols-3";
   var cells = columns
     .map(function (c) {
       var val = data[c.field] || "";
-      var input = window.IS_ADMIN
+      var input = !isReadOnly
         ? '<input type="text" class="ttd-name-input" name="' +
           c.field +
           '" value="' +
@@ -2018,20 +2219,32 @@ function buildTtdBox(
     var prelineCells = prelineFields
       .map(function (p) {
         var val = data[p.field] || "";
-        var input = window.IS_ADMIN
-          ? '<input type="text" class="ttd-preline-input" name="' +
+        var input = "";
+        if (!isReadOnly && (p.field === "diterima_tgl" || p.field === "malang_tanggal")) {
+          if (!val) {
+            val = new Date().toLocaleDateString('en-CA'); // 'YYYY-MM-DD'
+          }
+          input = '<input type="date" class="ttd-preline-input" name="' +
             p.field +
             '" value="' +
             escapeHtml(val) +
-            '" placeholder="....................">'
-          : "<span>" + escapeHtml(val || "....................") + "</span>";
+            '">';
+        } else {
+          input = !isReadOnly
+            ? '<input type="text" class="ttd-preline-input" name="' +
+              p.field +
+              '" value="' +
+              escapeHtml(val) +
+              '" placeholder="....................">'
+            : "<span>" + escapeHtml(val ? formatDate(val) : "....................") + "</span>";
+        }
         return "<span>" + escapeHtml(p.prefix) + " " + input + "</span>";
       })
       .join("");
     prelineHtml = '<div class="ttd-preline">' + prelineCells + "</div>";
   }
 
-  if (!window.IS_ADMIN) {
+  if (isReadOnly) {
     return (
       prelineHtml + '<div class="ttd-box ' + colsClass + '">' + cells + "</div>"
     );
@@ -2261,6 +2474,13 @@ document.addEventListener("DOMContentLoaded", function () {
     loadPendingDpbList();
   }
 
+  // halaman Stok Material (admin & gudang): muat otomatis saat halaman dibuka
+  if (document.getElementById("materialListContainer")) {
+    showMaterialList();
+    loadIncomingList();
+    loadOutgoingList();
+  }
+
   // halaman DPB / K3 / K7: siapkan datalist + minimal 1 baris material kosong
   if (document.getElementById("dpbItemsWrap")) {
     ensureMaterialDatalists();
@@ -2277,15 +2497,509 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // jika datang dari redirect setelah simpan pengajuan (?page=dpb/k3/k7&tug=...), langsung tampilkan hasilnya
   if (typeof window.AUTO_LOAD_TUG !== "undefined" && window.AUTO_LOAD_TUG) {
-    if (document.getElementById("tugNumberInput")) {
+    var urlParams = new URLSearchParams(window.location.search);
+    var pageParam = urlParams.get('page') || 'home';
+    
+    if (pageParam === 'dpb' && document.getElementById("tugNumberInput")) {
       document.getElementById("tugNumberInput").value = window.AUTO_LOAD_TUG;
       loadDPB();
-    } else if (document.getElementById("k3TugInput")) {
+    } else if (pageParam === 'surat_jalan' && typeof openGudangDpbDetail === 'function') {
+      openGudangDpbDetail(window.AUTO_LOAD_TUG);
+    } else if (pageParam === 'k3' && document.getElementById("k3TugInput")) {
       document.getElementById("k3TugInput").value = window.AUTO_LOAD_TUG;
       loadK3();
-    } else if (document.getElementById("k7TugInput")) {
+    } else if (pageParam === 'k7' && document.getElementById("k7TugInput")) {
       document.getElementById("k7TugInput").value = window.AUTO_LOAD_TUG;
       loadK7();
     }
   }
 });
+
+// AUTOCOMPLETE MATERIAL DINAMIS (Event Delegation)
+document.addEventListener("input", function (e) {
+  var target = e.target;
+  if (!target) return;
+
+  var isNameInput = target.name === "item_material_name[]" || target.id === "materialNameInput" || target.id === "editMaterialName";
+  var isNormInput = target.name === "item_material_norm[]" || target.id === "materialNormInput" || target.id === "editMaterialNorm";
+
+  if (!isNameInput && !isNormInput) return;
+
+  var type = isNameInput ? "name" : "norm";
+  var typed = target.value.trim().toLowerCase();
+
+  // Find or style parent container to relative
+  var formGroup = target.closest(".form-group");
+  if (!formGroup) return;
+
+  // Clear any existing suggestions dropdown in this form group
+  var existingDropdown = formGroup.querySelector(".autocomplete-suggestions-container");
+  if (existingDropdown) {
+    existingDropdown.remove();
+  }
+
+  if (typed.length < 2) return;
+
+  var data = getCombinedMaterialData();
+  var matches = data.filter(function (m) {
+    var val = type === "name" ? m.name : m.norm;
+    return val && val.toLowerCase().includes(typed);
+  });
+
+  // Create dropdown container
+  var dropdown = document.createElement("div");
+  dropdown.className = "autocomplete-suggestions-container";
+
+  if (matches.length === 0) {
+    var emptyDiv = document.createElement("div");
+    emptyDiv.className = "autocomplete-suggestion-empty";
+    emptyDiv.innerText = "Material tidak ditemukan";
+    dropdown.appendChild(emptyDiv);
+  } else {
+    var limit = 15;
+    for (var i = 0; i < Math.min(matches.length, limit); i++) {
+      var item = matches[i];
+      var option = document.createElement("div");
+      option.className = "autocomplete-suggestion-item";
+      option.innerText = type === "name" ? item.name : item.norm;
+      
+      // Select click handler
+      option.addEventListener("mousedown", (function(selectedItem) {
+        return function(evt) {
+          evt.preventDefault(); // prevent blur before selection processes
+          selectAutocompleteItem(target, selectedItem, type);
+          dropdown.remove();
+        };
+      })(item));
+      dropdown.appendChild(option);
+    }
+  }
+
+  formGroup.style.position = "relative";
+  formGroup.appendChild(dropdown);
+});
+
+function selectAutocompleteItem(inputEl, item, type) {
+  var row = inputEl.closest(".dpb-item-row") || inputEl.closest(".item-row");
+  
+  if (row) {
+    // Dynamic row in DPB, K3, or K7
+    var nameInput = row.querySelector('input[name="item_material_name[]"]');
+    var normInput = row.querySelector('input[name="item_material_norm[]"]');
+    var unitInput = row.querySelector('input[name="item_unit_display[]"]');
+    
+    if (nameInput) nameInput.value = item.name;
+    if (normInput) normInput.value = item.norm;
+    if (unitInput && item.unit) unitInput.value = item.unit;
+    
+    // Trigger change event
+    if (nameInput) nameInput.dispatchEvent(new Event("change"));
+  } else {
+    // Static forms
+    if (inputEl.id === "materialNameInput" || inputEl.id === "materialNormInput") {
+      var nameInput = document.getElementById("materialNameInput");
+      var normInput = document.getElementById("materialNormInput");
+      var unitSelect = document.querySelector('select[name="material_unit"]');
+      
+      if (nameInput) nameInput.value = item.name;
+      if (normInput) normInput.value = item.norm;
+      if (unitSelect && item.unit) unitSelect.value = item.unit;
+    } else if (inputEl.id === "editMaterialName" || inputEl.id === "editMaterialNorm") {
+      var nameInput = document.getElementById("editMaterialName");
+      var normInput = document.getElementById("editMaterialNorm");
+      var unitSelect = document.getElementById("editMaterialUnit");
+      
+      if (nameInput) nameInput.value = item.name;
+      if (normInput) normInput.value = item.norm;
+      if (unitSelect && item.unit) unitSelect.value = item.unit;
+    }
+  }
+}
+
+// Close suggestion box when click outside
+document.addEventListener("click", function (e) {
+  var activeDropdowns = document.querySelectorAll(".autocomplete-suggestions-container");
+  activeDropdowns.forEach(function (dropdown) {
+    var formGroup = dropdown.closest(".form-group");
+    if (formGroup && !formGroup.contains(e.target)) {
+      dropdown.remove();
+    }
+  });
+});
+
+// Enforce selection on blur for dynamic inputs
+document.addEventListener("focusout", function (e) {
+  var target = e.target;
+  if (!target) return;
+
+  var isDynamicName = target.name === "item_material_name[]";
+  var isDynamicNorm = target.name === "item_material_norm[]";
+
+  if (!isDynamicName && !isDynamicNorm) return;
+
+  // Small delay so mousedown on suggestion item triggers first
+  setTimeout(function () {
+    var typed = target.value.trim().toLowerCase();
+    
+    var formGroup = target.closest(".form-group");
+    if (formGroup) {
+      var dropdown = formGroup.querySelector(".autocomplete-suggestions-container");
+      if (dropdown) {
+        // Dropdown is still open or being clicked, do not clear
+        return;
+      }
+    }
+
+    if (!typed) {
+      clearRowInputs(target);
+      return;
+    }
+
+    var data = getCombinedMaterialData();
+    var match = data.find(function (m) {
+      var val = isDynamicName ? m.name : m.norm;
+      return val && val.trim().replace(/\s+/g, " ").toLowerCase() === typed;
+    });
+
+    if (!match) {
+      clearRowInputs(target);
+    }
+  }, 250);
+});
+
+function clearRowInputs(inputEl) {
+  var row = inputEl.closest(".dpb-item-row") || inputEl.closest(".item-row");
+  if (row) {
+    var nameInput = row.querySelector('input[name="item_material_name[]"]');
+    var normInput = row.querySelector('input[name="item_material_norm[]"]');
+    var unitInput = row.querySelector('input[name="item_unit_display[]"]');
+    if (nameInput) nameInput.value = "";
+    if (normInput) normInput.value = "";
+    if (unitInput) unitInput.value = "";
+  }
+}
+
+function toggleInputMaterialForm() {
+  var wrap = document.getElementById("inputMaterialFormWrap");
+  var btn = document.getElementById("btnToggleInputMaterial");
+  if (!wrap || !btn) return;
+  if (wrap.style.display === "none") {
+    wrap.style.display = "block";
+    btn.innerHTML = '<i class="fas fa-times"></i> Tutup Form Input';
+  } else {
+    wrap.style.display = "none";
+    btn.innerHTML = '<i class="fas fa-plus"></i> Input Material';
+  }
+}
+
+// ---------- MATERIAL MASUK (Incoming) ----------
+var currentIncomingList = [];
+var incomingActiveList = [];
+var incomingCurrentPage = 1;
+var INCOMING_PAGE_SIZE = 10;
+
+function loadIncomingList() {
+  var container = document.getElementById("incomingListContainer");
+  if (!container) return;
+  container.innerHTML = '<p class="text-small">Memuat data...</p>';
+  
+  fetch("index.php?ajax=incoming_materials")
+    .then(function (res) { return res.json(); })
+    .then(function (data) {
+      currentIncomingList = Array.isArray(data) ? data : [];
+      renderIncomingTable(currentIncomingList);
+    })
+    .catch(function () {
+      container.innerHTML = '<p class="text-small">Gagal memuat data material masuk.</p>';
+    });
+}
+
+function renderIncomingTable(list) {
+  incomingActiveList = list;
+  incomingCurrentPage = 1;
+  renderIncomingPage();
+}
+
+function renderIncomingPage() {
+  var container = document.getElementById("incomingListContainer");
+  if (!container) return;
+  var list = incomingActiveList;
+  
+  if (list.length === 0) {
+    container.innerHTML = '<p class="text-small">Tidak ada catatan material masuk.</p>';
+    return;
+  }
+  
+  var totalPages = Math.max(1, Math.ceil(list.length / INCOMING_PAGE_SIZE));
+  if (incomingCurrentPage > totalPages) incomingCurrentPage = totalPages;
+  if (incomingCurrentPage < 1) incomingCurrentPage = 1;
+  
+  var startIdx = (incomingCurrentPage - 1) * INCOMING_PAGE_SIZE;
+  var pageItems = list.slice(startIdx, startIdx + INCOMING_PAGE_SIZE);
+  
+  var rows = pageItems.map(function (m, i) {
+    var no = startIdx + i + 1;
+    return "<tr>" +
+      "<td>" + no + "</td>" +
+      "<td><strong>" + escapeHtml(m.material_name) + "</strong></td>" +
+      "<td>" + escapeHtml(m.material_norm) + "</td>" +
+      "<td>" + escapeHtml(m.material_unit) + "</td>" +
+      "<td><span class=\"badge\" style=\"background-color:#e3f7ec; color:var(--success); font-weight:700; padding:4px 8px; border-radius:8px;\">" + numberFormat(m.quantity) + "</span></td>" +
+      "<td>" + escapeHtml(m.pabrikan || "-") + "</td>" +
+      "<td>" + escapeHtml(m.nomor_kontrak || "-") + "</td>" +
+      "<td>" + (m.tanggal_datang ? formatDate(m.tanggal_datang) : "-") + "</td>" +
+      "</tr>";
+  }).join("");
+  
+  var tableHtml = '<div class="table-wrap"><table><thead><tr>' +
+    '<th style="width: 5%;">No</th>' +
+    '<th>Nama Material</th>' +
+    '<th>No. Normalisasi</th>' +
+    '<th>Satuan</th>' +
+    '<th>Jumlah</th>' +
+    '<th>Nama Pabrikan</th>' +
+    '<th>Nomor Kontrak</th>' +
+    '<th>Tanggal Datang</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    
+  var paginationHtml = buildIncomingPaginationHtml(incomingCurrentPage, totalPages);
+  container.innerHTML = tableHtml + paginationHtml;
+}
+
+function filterIncomingTable() {
+  var input = document.getElementById("incomingSearchInput");
+  var startInput = document.getElementById("incomingStartInput");
+  var endInput = document.getElementById("incomingEndInput");
+  
+  var query = (input ? input.value : "").trim().toLowerCase();
+  var startVal = (startInput ? startInput.value : "").trim();
+  var endVal = (endInput ? endInput.value : "").trim();
+  
+  var filtered = currentIncomingList.filter(function (m) {
+    // 1. Search Query
+    var matchesSearch = true;
+    if (query) {
+      matchesSearch = (m.material_name && m.material_name.toLowerCase().includes(query)) ||
+                      (m.material_norm && m.material_norm.toLowerCase().includes(query)) ||
+                      (m.pabrikan && m.pabrikan.toLowerCase().includes(query)) ||
+                      (m.nomor_kontrak && m.nomor_kontrak.toLowerCase().includes(query));
+    }
+    
+    // 2. Date Range
+    var matchesDate = true;
+    if (m.tanggal_datang) {
+      var datePart = m.tanggal_datang.substring(0, 10); // 'YYYY-MM-DD'
+      if (startVal && datePart < startVal) matchesDate = false;
+      if (endVal && datePart > endVal) matchesDate = false;
+    } else {
+      if (startVal || endVal) matchesDate = false;
+    }
+    
+    return matchesSearch && matchesDate;
+  });
+  
+  renderIncomingTable(filtered);
+}
+
+function resetIncomingFilters() {
+  var input = document.getElementById("incomingSearchInput");
+  var startInput = document.getElementById("incomingStartInput");
+  var endInput = document.getElementById("incomingEndInput");
+  if (input) input.value = "";
+  if (startInput) startInput.value = "";
+  if (endInput) endInput.value = "";
+  filterIncomingTable();
+}
+
+function exportIncoming() {
+  var input = document.getElementById("incomingSearchInput");
+  var startInput = document.getElementById("incomingStartInput");
+  var endInput = document.getElementById("incomingEndInput");
+  
+  var query = (input ? input.value : "").trim();
+  var startVal = (startInput ? startInput.value : "").trim();
+  var endVal = (endInput ? endInput.value : "").trim();
+  
+  window.location.href = "export_incoming.php?q=" + encodeURIComponent(query) + 
+                         "&start=" + encodeURIComponent(startVal) + 
+                         "&end=" + encodeURIComponent(endVal);
+}
+
+function goToIncomingPage(p) {
+  incomingCurrentPage = p;
+  renderIncomingPage();
+}
+
+function buildIncomingPaginationHtml(current, total) {
+  if (total <= 1) return "";
+  var html = '<div class="pagination-row" style="margin-top:1rem; text-align:center;">';
+  for (var i = 1; i <= total; i++) {
+    var activeClass = i === current ? "active" : "";
+    html += '<button type="button" class="page-btn ' + activeClass + '" onclick="goToIncomingPage(' + i + ')">' + i + '</button>';
+  }
+  html += '</div>';
+  return html;
+}
+
+// ---------- MATERIAL KELUAR (Outgoing) ----------
+var currentOutgoingList = [];
+var outgoingActiveList = [];
+var outgoingCurrentPage = 1;
+var OUTGOING_PAGE_SIZE = 10;
+
+function loadOutgoingList() {
+  var container = document.getElementById("outgoingListContainer");
+  if (!container) return;
+  container.innerHTML = '<p class="text-small">Memuat data...</p>';
+  
+  fetch("index.php?ajax=outgoing_materials")
+    .then(function (res) { return res.json(); })
+    .then(function (data) {
+      currentOutgoingList = Array.isArray(data) ? data : [];
+      renderOutgoingTable(currentOutgoingList);
+    })
+    .catch(function () {
+      container.innerHTML = '<p class="text-small">Gagal memuat data material keluar.</p>';
+    });
+}
+
+function renderOutgoingTable(list) {
+  outgoingActiveList = list;
+  outgoingCurrentPage = 1;
+  renderOutgoingPage();
+}
+
+function renderOutgoingPage() {
+  var container = document.getElementById("outgoingListContainer");
+  if (!container) return;
+  var list = outgoingActiveList;
+  
+  if (list.length === 0) {
+    container.innerHTML = '<p class="text-small">Tidak ada catatan material keluar.</p>';
+    return;
+  }
+  
+  var totalPages = Math.max(1, Math.ceil(list.length / OUTGOING_PAGE_SIZE));
+  if (outgoingCurrentPage > totalPages) outgoingCurrentPage = totalPages;
+  if (outgoingCurrentPage < 1) outgoingCurrentPage = 1;
+  
+  var startIdx = (outgoingCurrentPage - 1) * OUTGOING_PAGE_SIZE;
+  var pageItems = list.slice(startIdx, startIdx + OUTGOING_PAGE_SIZE);
+  
+  var rows = pageItems.map(function (m, i) {
+    var no = startIdx + i + 1;
+    return "<tr>" +
+      "<td>" + no + "</td>" +
+      "<td><strong>" + escapeHtml(m.material_name) + "</strong></td>" +
+      "<td>" + escapeHtml(m.material_norm) + "</td>" +
+      "<td>" + escapeHtml(m.material_unit) + "</td>" +
+      "<td><span class=\"badge\" style=\"background-color:#ffeef0; color:var(--danger); font-weight:700; padding:4px 8px; border-radius:8px;\">" + numberFormat(m.quantity) + "</span></td>" +
+      "<td>" + escapeHtml(m.vendor_name) + "</td>" +
+      "<td>" + escapeHtml(m.no_dpb) + "</td>" +
+      "<td>" + (m.tanggal_keluar ? formatDate(m.tanggal_keluar) : "-") + "</td>" +
+      "</tr>";
+  }).join("");
+  
+  var tableHtml = '<div class="table-wrap"><table><thead><tr>' +
+    '<th style="width: 5%;">No</th>' +
+    '<th>Nama Material</th>' +
+    '<th>No. Normalisasi</th>' +
+    '<th>Satuan</th>' +
+    '<th>Jumlah</th>' +
+    '<th>Nama Vendor</th>' +
+    '<th>Nomor DPB / TUG</th>' +
+    '<th>Tanggal Keluar</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    
+  var paginationHtml = buildOutgoingPaginationHtml(outgoingCurrentPage, totalPages);
+  container.innerHTML = tableHtml + paginationHtml;
+}
+
+function filterOutgoingTable() {
+  var input = document.getElementById("outgoingSearchInput");
+  var startInput = document.getElementById("outgoingStartInput");
+  var endInput = document.getElementById("outgoingEndInput");
+  
+  var query = (input ? input.value : "").trim().toLowerCase();
+  var startVal = (startInput ? startInput.value : "").trim();
+  var endVal = (endInput ? endInput.value : "").trim();
+  
+  var filtered = currentOutgoingList.filter(function (m) {
+    // 1. Search Query
+    var matchesSearch = true;
+    if (query) {
+      matchesSearch = (m.material_name && m.material_name.toLowerCase().includes(query)) ||
+                      (m.material_norm && m.material_norm.toLowerCase().includes(query)) ||
+                      (m.vendor_name && m.vendor_name.toLowerCase().includes(query)) ||
+                      (m.no_dpb && m.no_dpb.toLowerCase().includes(query));
+    }
+    
+    // 2. Date Range
+    var matchesDate = true;
+    if (m.tanggal_keluar) {
+      var datePart = m.tanggal_keluar.substring(0, 10); // 'YYYY-MM-DD'
+      if (startVal && datePart < startVal) matchesDate = false;
+      if (endVal && datePart > endVal) matchesDate = false;
+    } else {
+      if (startVal || endVal) matchesDate = false;
+    }
+    
+    return matchesSearch && matchesDate;
+  });
+  
+  renderOutgoingTable(filtered);
+}
+
+function resetOutgoingFilters() {
+  var input = document.getElementById("outgoingSearchInput");
+  var startInput = document.getElementById("outgoingStartInput");
+  var endInput = document.getElementById("outgoingEndInput");
+  if (input) input.value = "";
+  if (startInput) startInput.value = "";
+  if (endInput) endInput.value = "";
+  filterOutgoingTable();
+}
+
+function exportOutgoing() {
+  var input = document.getElementById("outgoingSearchInput");
+  var startInput = document.getElementById("outgoingStartInput");
+  var endInput = document.getElementById("outgoingEndInput");
+  
+  var query = (input ? input.value : "").trim();
+  var startVal = (startInput ? startInput.value : "").trim();
+  var endVal = (endInput ? endInput.value : "").trim();
+  
+  window.location.href = "export_outgoing.php?q=" + encodeURIComponent(query) + 
+                         "&start=" + encodeURIComponent(startVal) + 
+                         "&end=" + encodeURIComponent(endVal);
+}
+
+function goToOutgoingPage(p) {
+  outgoingCurrentPage = p;
+  renderOutgoingPage();
+}
+
+function buildOutgoingPaginationHtml(current, total) {
+  if (total <= 1) return "";
+  var html = '<div class="pagination-row" style="margin-top:1rem; text-align:center;">';
+  for (var i = 1; i <= total; i++) {
+    var activeClass = i === current ? "active" : "";
+    html += '<button type="button" class="page-btn ' + activeClass + '" onclick="goToOutgoingPage(' + i + ')">' + i + '</button>';
+  }
+  html += '</div>';
+  return html;
+}
+
+// ---------- JS HELPER FUNCTIONS ----------
+function numberFormat(val) {
+  var n = Number(val) || 0;
+  return n.toLocaleString("id-ID");
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return "-";
+  var d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  var months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agt", "Sep", "Okt", "Nov", "Des"];
+  return String(d.getDate()).padStart(2, '0') + "-" + months[d.getMonth()] + "-" + d.getFullYear();
+}

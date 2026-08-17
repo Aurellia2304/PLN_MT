@@ -11,19 +11,100 @@ $tug = trim($_GET['tug'] ?? $_POST['tug_number'] ?? '');
 // =========================================================
 // SIMPAN PERUBAHAN — DPB (semua field + item bisa diedit)
 // =========================================================
+// =========================================================
+// SIMPAN PERUBAHAN — DPB (semua field + item bisa diedit)
+// =========================================================
 if (isset($_POST['update_g2_dpb'])) {
     $dpbId = $_POST['dpb_id'] ?? '';
     $tug   = trim($_POST['tug_number'] ?? '');
 
-    // "Diterima Tanggal" selalu dipaksa ke tanggal hari ini saat disimpan,
-    // apapun yang dikirim dari form (kalender di form juga dikunci hanya
-    // bisa pilih hari ini, ini jaga-jaga di sisi server).
+    // Cek status DPB saat ini
+    $stmtCheck = $db->prepare("SELECT status FROM dpb_transactions WHERE id = ?");
+    $stmtCheck->execute([$dpbId]);
+    $currentStatus = $stmtCheck->fetchColumn();
+    if ($currentStatus === 'selesai') {
+        $_SESSION['error'] = "Data surat yang sudah selesai tidak dapat diubah!";
+        header("Location: index.php?tug=" . urlencode($tug));
+        exit();
+    }
+
+    // "Diterima Tanggal" selalu dipaksa ke tanggal hari ini saat disimpan
     $diterimaTgl = date('Y-m-d');
+
+    $ids  = $_POST['item_id'] ?? [];
+    $req  = $_POST['item_requested'] ?? [];
+    $recv = $_POST['item_received'] ?? [];
+    
+    // Validasi SN wajib dan keunikan sebelum menyimpan
+    $currentRequestSns = [];
+    foreach ($ids as $i => $itemId) {
+        $qd = max(0, (int)($recv[$i] ?? 0));
+        
+        // Ambil nama material dari database
+        $stmtMat = $db->prepare("SELECT m.name FROM dpb_items di LEFT JOIN materials m ON di.material_id = m.id WHERE di.id = ?");
+        $stmtMat->execute([$itemId]);
+        $materialName = $stmtMat->fetchColumn();
+        
+        // Dapatkan array input SN untuk item ini
+        $snsArr = $_POST['item_sn_' . $itemId] ?? [];
+        // Normalisasi
+        $snsArr = array_filter(array_map('trim', $snsArr));
+        
+        if (isMaterialWajibSN($materialName)) {
+            if ($qd > 0) {
+                if (count($snsArr) !== $qd) {
+                    $_SESSION['error'] = "Jumlah Serial Number (SN) tidak sesuai dengan jumlah Diterima untuk material: $materialName";
+                    header("Location: index.php?tug=" . urlencode($tug));
+                    exit();
+                }
+                foreach ($snsArr as $snVal) {
+                    if (empty($snVal)) {
+                        $_SESSION['error'] = "Serial Number (SN) wajib diisi untuk material: $materialName";
+                        header("Location: index.php?tug=" . urlencode($tug));
+                        exit();
+                    }
+                    $snLower = strtolower($snVal);
+                    // Keunikan lokal dalam request
+                    if (in_array($snLower, $currentRequestSns)) {
+                        $_SESSION['error'] = "Serial Number (SN) \"$snVal\" tidak boleh diduplikat dalam satu pengajuan.";
+                        header("Location: index.php?tug=" . urlencode($tug));
+                        exit();
+                    }
+                    $currentRequestSns[] = $snLower;
+                    
+                    // Keunikan global di database
+                    $stmtUnique = $db->prepare("
+                        SELECT COUNT(*) FROM dpb_items 
+                        WHERE id <> ? 
+                          AND (
+                            sn = ? 
+                            OR sn LIKE ? 
+                            OR sn LIKE ? 
+                            OR sn LIKE ?
+                          )
+                    ");
+                    $stmtUnique->execute([
+                        $itemId,
+                        $snVal,
+                        $snVal . ', %',
+                        '%, ' . $snVal,
+                        '%, ' . $snVal . ', %'
+                    ]);
+                    if ($stmtUnique->fetchColumn() > 0) {
+                        $_SESSION['error'] = "Serial Number (SN) \"$snVal\" sudah terdaftar di database pada transaksi lain.";
+                        header("Location: index.php?tug=" . urlencode($tug));
+                        exit();
+                    }
+                }
+            }
+        }
+    }
 
     $stmt = $db->prepare("UPDATE dpb_transactions SET
         spk_number = ?, jenis_pekerjaan = ?, idpel = ?, customer_name = ?, customer_address = ?,
         daya = ?, ulp = ?, tanggal_diminta = ?, diterima_tgl = ?,
-        penerima_name = ?, security_name = ?, menyerahkan_name = ?
+        penerima_name = ?, security_name = ?, menyerahkan_name = ?,
+        setuju_name = ?, kepala_gudang_name = ?, pemeriksa_pengawas_name = ?
         WHERE id = ?");
     $stmt->execute([
         trim($_POST['spk_number'] ?? ''),
@@ -38,19 +119,32 @@ if (isset($_POST['update_g2_dpb'])) {
         trim($_POST['penerima_name'] ?? ''),
         trim($_POST['security_name'] ?? ''),
         trim($_POST['menyerahkan_name'] ?? ''),
+        trim($_POST['setuju_name'] ?? ''),
+        trim($_POST['kepala_gudang_name'] ?? ''),
+        trim($_POST['pemeriksa_pengawas_name'] ?? ''),
         $dpbId
     ]);
 
-    $ids  = $_POST['item_id'] ?? [];
-    $req  = $_POST['item_requested'] ?? [];
-    $recv = $_POST['item_received'] ?? [];
-    $sns  = $_POST['item_sn'] ?? [];
+    // Generate nomor surat jalan otomatis jika kosong
+    $stmtSj = $db->prepare("SELECT surat_jalan_number, tanggal_diminta FROM dpb_transactions WHERE id = ?");
+    $stmtSj->execute([$dpbId]);
+    $dpbRow = $stmtSj->fetch(PDO::FETCH_ASSOC);
+    if ($dpbRow && empty($dpbRow['surat_jalan_number'])) {
+        $sjNumber = generateNextSuratJalanNumber($db, $dpbRow['tanggal_diminta'] ?: date('Y-m-d'));
+        $stmtUpdateSj = $db->prepare("UPDATE dpb_transactions SET surat_jalan_number = ? WHERE id = ?");
+        $stmtUpdateSj->execute([$sjNumber, $dpbId]);
+    }
+
     foreach ($ids as $i => $itemId) {
         $qr = max(0, (int)($req[$i] ?? 0));
         $qd = max(0, (int)($recv[$i] ?? 0));
-        $sn = trim($sns[$i] ?? '');
+        
+        $snsArr = $_POST['item_sn_' . $itemId] ?? [];
+        $snsArr = array_filter(array_map('trim', $snsArr));
+        $snString = implode(', ', $snsArr);
+        
         $s = $db->prepare("UPDATE dpb_items SET quantity_requested = ?, quantity_received = ?, sn = ? WHERE id = ?");
-        $s->execute([$qr, $qd, $sn, $itemId]);
+        $s->execute([$qr, $qd, $snString, $itemId]);
     }
 
     $_SESSION['success'] = "Data DPB \"$tug\" berhasil diperbarui.";
@@ -64,6 +158,16 @@ if (isset($_POST['update_g2_dpb'])) {
 if (isset($_POST['update_g2_k3'])) {
     $k3Id = $_POST['k3_id'] ?? '';
     $tug  = trim($_POST['tug_number'] ?? '');
+
+    // Cek status K3 saat ini
+    $stmtCheck = $db->prepare("SELECT status FROM k3_transactions WHERE id = ?");
+    $stmtCheck->execute([$k3Id]);
+    $currentStatus = $stmtCheck->fetchColumn();
+    if ($currentStatus === 'selesai') {
+        $_SESSION['error'] = "Data surat yang sudah selesai tidak dapat diubah!";
+        header("Location: index.php?tug=" . urlencode($tug));
+        exit();
+    }
 
     $stmt = $db->prepare("UPDATE k3_transactions SET
         spk_number = ?, jenis_pekerjaan = ?, idpel = ?, customer_name = ?, customer_address = ?,
@@ -108,6 +212,16 @@ if (isset($_POST['update_g2_k3'])) {
 if (isset($_POST['update_g2_k7'])) {
     $k7Id = $_POST['k7_id'] ?? '';
     $tug  = trim($_POST['tug_number'] ?? '');
+
+    // Cek status K7 saat ini
+    $stmtCheck = $db->prepare("SELECT status FROM k7_transactions WHERE id = ?");
+    $stmtCheck->execute([$k7Id]);
+    $currentStatus = $stmtCheck->fetchColumn();
+    if ($currentStatus === 'selesai') {
+        $_SESSION['error'] = "Data surat yang sudah selesai tidak dapat diubah!";
+        header("Location: index.php?tug=" . urlencode($tug));
+        exit();
+    }
 
     $stmt = $db->prepare("UPDATE k7_transactions SET
         spk_number = ?, jenis_pekerjaan = ?, idpel = ?, customer_name = ?, customer_address = ?,
@@ -503,46 +617,46 @@ $vendors = getVendors($db);
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>No. SPK</label>
-                        <input type="text" name="spk_number" id="dpbSpkInput">
+                        <label>No. SPK <span style="color:red;">*</span></label>
+                        <input type="text" name="spk_number" id="dpbSpkInput" required>
                     </div>
                 </div>
 
                 <div class="flex-row">
                     <div class="form-group">
-                        <label>Jenis Pekerjaan</label>
-                        <input type="text" name="jenis_pekerjaan" id="dpbJenisInput">
+                        <label>Jenis Pekerjaan <span style="color:red;">*</span></label>
+                        <input type="text" name="jenis_pekerjaan" id="dpbJenisInput" required>
                     </div>
                     <div class="form-group">
-                        <label>IDPEL</label>
-                        <input type="text" name="idpel" id="dpbIdpelInput">
+                        <label>IPDEL <span style="color:red;">*</span></label>
+                        <input type="text" name="idpel" id="dpbIdpelInput" required>
                     </div>
                     <div class="form-group">
-                        <label>Daya</label>
-                        <input type="text" name="daya" id="dpbDayaInput">
+                        <label>Daya <span style="color:red;">*</span></label>
+                        <input type="text" name="daya" id="dpbDayaInput" required>
                     </div>
                     <div class="form-group">
-                        <label>ULP</label>
-                        <input type="text" name="ulp" id="dpbUlpInput">
+                        <label>ULP <span style="color:red;">*</span></label>
+                        <input type="text" name="ulp" id="dpbUlpInput" required>
                     </div>
                 </div>
 
                 <div class="flex-row">
                     <div class="form-group">
-                        <label>Nama Pelanggan</label>
+                        <label>Nama Pelanggan <span style="color:red;">*</span></label>
                         <input type="text" name="customer_name" placeholder="Nama pelanggan" required>
                     </div>
                     <div class="form-group">
-                        <label>Alamat Pelanggan</label>
-                        <input type="text" name="customer_address" placeholder="Alamat lengkap pelanggan">
+                        <label>Alamat Pelanggan <span style="color:red;">*</span></label>
+                        <input type="text" name="customer_address" placeholder="Alamat lengkap pelanggan" required>
                     </div>
                 </div>
 
                 <h4 style="color:#0b2b4a; margin-top:1.2rem;">Data Tanda Tangan</h4>
                 <div class="flex-row">
                     <div class="form-group">
-                        <label>Penerima</label>
-                        <input type="text" name="penerima_name" placeholder="Nama penerima">
+                        <label>Penerima <span style="color:red;">*</span></label>
+                        <input type="text" name="penerima_name" placeholder="Nama penerima" required>
                     </div>
                     <div class="form-group">
                         <label>Security</label>
@@ -551,6 +665,20 @@ $vendors = getVendors($db);
                     <div class="form-group">
                         <label>Yang Menyerahkan</label>
                         <input type="text" name="menyerahkan_name" placeholder="Nama yang menyerahkan">
+                    </div>
+                </div>
+                <div class="flex-row" style="margin-top: 1rem;">
+                    <div class="form-group">
+                        <label>Setuju (Manager/Asman)</label>
+                        <input type="text" name="setuju_name" value="" <?= $disabledAttr ?>>
+                    </div>
+                    <div class="form-group">
+                        <label>Kepala Gudang</label>
+                        <input type="text" name="kepala_gudang_name" value="" <?= $disabledAttr ?>>
+                    </div>
+                    <div class="form-group">
+                        <label>Pemeriksa / Petugas</label>
+                        <input type="text" name="pemeriksa_pengawas_name" placeholder="Nama pemeriksa/petugas">
                     </div>
                 </div>
 
@@ -579,27 +707,33 @@ $vendors = getVendors($db);
             </div>
 
         <?php elseif ($found && $found['type'] === 'dpb'):
-            $d = $found['data']; ?>
+            $d = $found['data'];
+            $isReadOnly = ($d['status'] === 'selesai');
+            $disabledAttr = $isReadOnly ? 'disabled' : ''; ?>
             <div class="g2-result-card">
                 <h2><span class="g2-type-badge dpb">DPB</span> Nomor TUG: <?= htmlspecialchars($d['tug_number']) ?></h2>
 
-                <form method="POST" action="index.php">
+                <form method="POST" action="index.php" id="g2DpbForm">
                     <input type="hidden" name="dpb_id" value="<?= $d['id'] ?>">
                     <input type="hidden" name="tug_number" value="<?= htmlspecialchars($d['tug_number']) ?>">
 
                     <div class="g2-grid">
+                        <div class="g2-field">
+                            <label><?= empty($d['surat_jalan_number']) ? 'Nomor Surat Jalan (Otomatis)' : 'Nomor Surat Jalan' ?></label>
+                            <input type="text" value="<?= htmlspecialchars($d['surat_jalan_number'] ?: generateNextSuratJalanNumber($db, $d['tanggal_diminta'] ?: date('Y-m-d'))) ?>" readonly style="background-color: #f1f5f9; color: #64748b; font-weight: bold; border: 1px solid #cbd5e1; cursor: not-allowed;">
+                        </div>
                         <div class="g2-field"><label>Vendor</label><input type="text" value="<?= htmlspecialchars($d['vendor_name'] ?? '-') ?>" disabled></div>
-                        <div class="g2-field"><label>No. SPK</label><input type="text" name="spk_number" value="<?= htmlspecialchars($d['spk_number'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>Jenis Pekerjaan</label><input type="text" name="jenis_pekerjaan" value="<?= htmlspecialchars($d['jenis_pekerjaan'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>IDPEL</label><input type="text" name="idpel" value="<?= htmlspecialchars($d['idpel'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>Nama Pelanggan</label><input type="text" name="customer_name" value="<?= htmlspecialchars($d['customer_name'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>Alamat Pelanggan</label><input type="text" name="customer_address" value="<?= htmlspecialchars($d['customer_address'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>Daya</label><input type="text" name="daya" value="<?= htmlspecialchars($d['daya'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>ULP</label><input type="text" name="ulp" value="<?= htmlspecialchars($d['ulp'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>Tanggal Diminta</label><input type="date" name="tanggal_diminta" value="<?= htmlspecialchars($d['tanggal_diminta'] ?? '') ?>"></div>
+                        <div class="g2-field"><label>No. SPK</label><input type="text" name="spk_number" value="<?= htmlspecialchars($d['spk_number'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Jenis Pekerjaan</label><input type="text" name="jenis_pekerjaan" value="<?= htmlspecialchars($d['jenis_pekerjaan'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>IDPEL</label><input type="text" name="idpel" value="<?= htmlspecialchars($d['idpel'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Nama Pelanggan</label><input type="text" name="customer_name" value="<?= htmlspecialchars($d['customer_name'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Alamat Pelanggan</label><input type="text" name="customer_address" value="<?= htmlspecialchars($d['customer_address'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Daya</label><input type="text" name="daya" value="<?= htmlspecialchars($d['daya'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>ULP</label><input type="text" name="ulp" value="<?= htmlspecialchars($d['ulp'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Tanggal Diminta</label><input type="date" name="tanggal_diminta" value="<?= htmlspecialchars($d['tanggal_diminta'] ?? '') ?>" <?= $disabledAttr ?>></div>
                         <div class="g2-field">
                             <label>Diterima Tanggal</label>
-                            <input type="date" name="diterima_tgl" value="<?= htmlspecialchars(date('Y-m-d')) ?>" min="<?= htmlspecialchars(date('Y-m-d')) ?>" max="<?= htmlspecialchars(date('Y-m-d')) ?>">
+                            <input type="date" name="diterima_tgl" value="<?= htmlspecialchars($d['diterima_tgl'] ?? date('Y-m-d')) ?>" <?= $disabledAttr ?>>
                         </div>
                     </div>
 
@@ -619,10 +753,18 @@ $vendors = getVendors($db);
                                 <td data-label="Satuan"><?= htmlspecialchars($it['unit'] ?? '-') ?></td>
                                 <td data-label="Diminta">
                                     <input type="hidden" name="item_id[]" value="<?= $it['id'] ?>">
-                                    <input type="number" min="0" name="item_requested[]" value="<?= (int)$it['quantity_requested'] ?>">
+                                    <input type="number" min="0" name="item_requested[]" value="<?= (int)$it['quantity_requested'] ?>" <?= $disabledAttr ?>>
                                 </td>
-                                <td data-label="Diterima"><input type="number" min="0" name="item_received[]" value="<?= (int)$it['quantity_received'] ?>"></td>
-                                <td data-label="SN"><input type="text" name="item_sn[]" value="<?= htmlspecialchars($it['sn'] ?? '') ?>" maxlength="30" placeholder=""></td>
+                                <td data-label="Diterima">
+                                    <input type="number" min="0" name="item_received[]" value="<?= (int)$it['quantity_received'] ?>" class="item-recv-input" <?= $disabledAttr ?>>
+                                </td>
+                                <td data-label="SN">
+                                    <?php if ($isReadOnly): ?>
+                                        <?= htmlspecialchars($it['sn'] ?: '-') ?>
+                                    <?php else: ?>
+                                        <div class="sn-cell-container" data-material-name="<?= htmlspecialchars($it['material_name']) ?>" data-item-id="<?= $it['id'] ?>" data-saved-sn="<?= htmlspecialchars($it['sn'] ?? '') ?>"></div>
+                                    <?php endif; ?>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                         </tbody>
@@ -630,22 +772,29 @@ $vendors = getVendors($db);
                     </div>
 
                     <div class="g2-grid">
-                        <div class="g2-field"><label>Penerima</label><input type="text" name="penerima_name" value="<?= htmlspecialchars($d['penerima_name'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>Security</label><input type="text" name="security_name" value="<?= htmlspecialchars($d['security_name'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>Yang Menyerahkan</label><input type="text" name="menyerahkan_name" value="<?= htmlspecialchars($d['menyerahkan_name'] ?? '') ?>"></div>
+                        <div class="g2-field"><label>Penerima</label><input type="text" name="penerima_name" value="<?= htmlspecialchars($d['penerima_name'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Security</label><input type="text" name="security_name" value="<?= htmlspecialchars($d['security_name'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Yang Menyerahkan</label><input type="text" name="menyerahkan_name" value="<?= htmlspecialchars($d['menyerahkan_name'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Setuju</label><input type="text" name="setuju_name" value="<?= htmlspecialchars($d['setuju_name'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Kepala Gudang</label><input type="text" name="kepala_gudang_name" value="<?= htmlspecialchars($d['kepala_gudang_name'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Pemeriksa / Petugas</label><input type="text" name="pemeriksa_pengawas_name" value="<?= htmlspecialchars($d['pemeriksa_pengawas_name'] ?? '') ?>" <?= $disabledAttr ?>></div>
                     </div>
 
-                    <button type="submit" name="update_g2_dpb" class="g2-save-btn"><i class="fas fa-save"></i> Simpan Perubahan</button>
+                    <?php if (!$isReadOnly): ?>
+                        <button type="submit" name="update_g2_dpb" class="g2-save-btn"><i class="fas fa-save"></i> Simpan Perubahan</button>
+                    <?php endif; ?>
                 </form>
 
-                <div class="g2-print-row">
-                    <a href="printDPB.php?tug=<?= urlencode($d['tug_number']) ?>" target="_blank" class="g2-print-btn"><i class="fas fa-print"></i> Cetak Surat Jalan (Material)</a>
-                    <a href="Printdpbform.php?tug=<?= urlencode($d['tug_number']) ?>" target="_blank" class="g2-print-btn secondary"><i class="fas fa-print"></i> Cetak Form DPB Resmi</a>
+                <div class="g2-print-row" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <a href="printDPB.php?tug=<?= urlencode($d['tug_number']) ?>" target="_blank" class="g2-print-btn"><i class="fas fa-print"></i> Cetak Surat Jalan</a>
+                    <a href="printDPBForm.php?tug=<?= urlencode($d['tug_number']) ?>" target="_blank" class="g2-print-btn"><i class="fas fa-print"></i> Cetak DPB</a>
                 </div>
             </div>
 
         <?php elseif ($found && $found['type'] === 'k3'):
-            $k = $found['data']; ?>
+            $k = $found['data'];
+            $isReadOnly = ($k['status'] === 'selesai');
+            $disabledAttr = $isReadOnly ? 'disabled' : ''; ?>
             <div class="g2-result-card">
                 <h2><span class="g2-type-badge k3">K3</span> Nomor TUG: <?= htmlspecialchars($k['tug_number']) ?></h2>
 
@@ -655,22 +804,22 @@ $vendors = getVendors($db);
 
                     <div class="g2-grid">
                         <div class="g2-field"><label>Vendor</label><input type="text" value="<?= htmlspecialchars($k['vendor_name'] ?? '-') ?>" disabled></div>
-                        <div class="g2-field"><label>No. SPK</label><input type="text" name="spk_number" value="<?= htmlspecialchars($k['spk_number'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>Jenis Pekerjaan</label><input type="text" name="jenis_pekerjaan" value="<?= htmlspecialchars($k['jenis_pekerjaan'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>IDPEL</label><input type="text" name="idpel" value="<?= htmlspecialchars($k['idpel'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>Nama Pelanggan</label><input type="text" name="customer_name" value="<?= htmlspecialchars($k['customer_name'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>Alamat Pelanggan</label><input type="text" name="customer_address" value="<?= htmlspecialchars($k['customer_address'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>Gudang Pengembalian</label><input type="text" name="gudang_pengembalian" value="<?= htmlspecialchars($k['gudang_pengembalian'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>Tanggal Diminta</label><input type="date" name="tanggal_diminta" value="<?= htmlspecialchars($k['tanggal_diminta'] ?? '') ?>"></div>
+                        <div class="g2-field"><label>No. SPK</label><input type="text" name="spk_number" value="<?= htmlspecialchars($k['spk_number'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Jenis Pekerjaan</label><input type="text" name="jenis_pekerjaan" value="<?= htmlspecialchars($k['jenis_pekerjaan'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>IDPEL</label><input type="text" name="idpel" value="<?= htmlspecialchars($k['idpel'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Nama Pelanggan</label><input type="text" name="customer_name" value="<?= htmlspecialchars($k['customer_name'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Alamat Pelanggan</label><input type="text" name="customer_address" value="<?= htmlspecialchars($k['customer_address'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Gudang Pengembalian</label><input type="text" name="gudang_pengembalian" value="<?= htmlspecialchars($k['gudang_pengembalian'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Tanggal Diminta</label><input type="date" name="tanggal_diminta" value="<?= htmlspecialchars($k['tanggal_diminta'] ?? '') ?>" <?= $disabledAttr ?>></div>
                         <div class="g2-field">
                             <label>Kondisi Material</label>
-                            <select name="kondisi_material">
+                            <select name="kondisi_material" <?= $disabledAttr ?>>
                                 <?php foreach ($kondisiList as $key => $label): ?>
                                     <option value="<?= $key ?>" <?= $k['kondisi_material'] === $key ? 'selected' : '' ?>><?= $label ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <div class="g2-field" style="grid-column: 1 / -1;"><label>Keterangan</label><textarea name="keterangan"><?= htmlspecialchars($k['keterangan'] ?? '') ?></textarea></div>
+                        <div class="g2-field" style="grid-column: 1 / -1;"><label>Keterangan</label><textarea name="keterangan" <?= $disabledAttr ?>><?= htmlspecialchars($k['keterangan'] ?? '') ?></textarea></div>
                     </div>
 
                     <div class="g2-table-wrap">
@@ -689,9 +838,9 @@ $vendors = getVendors($db);
                                 <td data-label="Satuan"><?= htmlspecialchars($it['unit'] ?? '-') ?></td>
                                 <td data-label="Dikembalikan">
                                     <input type="hidden" name="item_id[]" value="<?= $it['id'] ?>">
-                                    <input type="number" min="0" name="item_returned[]" value="<?= (int)$it['quantity_returned'] ?>">
+                                    <input type="number" min="0" name="item_returned[]" value="<?= (int)$it['quantity_returned'] ?>" <?= $disabledAttr ?>>
                                 </td>
-                                <td data-label="Diterima"><input type="number" min="0" name="item_received[]" value="<?= (int)$it['quantity_received'] ?>"></td>
+                                <td data-label="Diterima"><input type="number" min="0" name="item_received[]" value="<?= (int)$it['quantity_received'] ?>" <?= $disabledAttr ?>></td>
                             </tr>
                         <?php endforeach; ?>
                         </tbody>
@@ -699,13 +848,15 @@ $vendors = getVendors($db);
                     </div>
 
                     <div class="g2-grid">
-                        <div class="g2-field"><label>Setuju</label><input type="text" name="setuju_name" value="<?= htmlspecialchars($k['setuju_name'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>Kepala Gudang</label><input type="text" name="kepala_gudang_name" value="<?= htmlspecialchars($k['kepala_gudang_name'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>Pemeriksa / Pengawas</label><input type="text" name="pemeriksa_pengawas_name" value="<?= htmlspecialchars($k['pemeriksa_pengawas_name'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>Yang Menyerahkan</label><input type="text" name="yang_menyerahkan_name" value="<?= htmlspecialchars($k['yang_menyerahkan_name'] ?? '') ?>"></div>
+                        <div class="g2-field"><label>Setuju</label><input type="text" name="setuju_name" value="<?= htmlspecialchars($k['setuju_name'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Kepala Gudang</label><input type="text" name="kepala_gudang_name" value="<?= htmlspecialchars($k['kepala_gudang_name'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Pemeriksa / Pengawas</label><input type="text" name="pemeriksa_pengawas_name" value="<?= htmlspecialchars($k['pemeriksa_pengawas_name'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Yang Menyerahkan</label><input type="text" name="yang_menyerahkan_name" value="<?= htmlspecialchars($k['yang_menyerahkan_name'] ?? '') ?>" <?= $disabledAttr ?>></div>
                     </div>
 
-                    <button type="submit" name="update_g2_k3" class="g2-save-btn"><i class="fas fa-save"></i> Simpan Perubahan</button>
+                    <?php if (!$isReadOnly): ?>
+                        <button type="submit" name="update_g2_k3" class="g2-save-btn"><i class="fas fa-save"></i> Simpan Perubahan</button>
+                    <?php endif; ?>
                 </form>
 
                 <div class="g2-print-row">
@@ -714,7 +865,9 @@ $vendors = getVendors($db);
             </div>
 
         <?php elseif ($found && $found['type'] === 'k7'):
-            $k = $found['data']; ?>
+            $k = $found['data'];
+            $isReadOnly = ($k['status'] === 'selesai');
+            $disabledAttr = $isReadOnly ? 'disabled' : ''; ?>
             <div class="g2-result-card">
                 <h2><span class="g2-type-badge k7">K7</span> Nomor TUG: <?= htmlspecialchars($k['tug_number']) ?></h2>
 
@@ -724,14 +877,14 @@ $vendors = getVendors($db);
 
                     <div class="g2-grid">
                         <div class="g2-field"><label>Vendor</label><input type="text" value="<?= htmlspecialchars($k['vendor_name'] ?? '-') ?>" disabled></div>
-                        <div class="g2-field"><label>No. SPK</label><input type="text" name="spk_number" value="<?= htmlspecialchars($k['spk_number'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>Jenis Pekerjaan</label><input type="text" name="jenis_pekerjaan" value="<?= htmlspecialchars($k['jenis_pekerjaan'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>IDPEL</label><input type="text" name="idpel" value="<?= htmlspecialchars($k['idpel'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>Nama Pelanggan</label><input type="text" name="customer_name" value="<?= htmlspecialchars($k['customer_name'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>Alamat Pelanggan</label><input type="text" name="customer_address" value="<?= htmlspecialchars($k['customer_address'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>Daya</label><input type="text" name="daya" value="<?= htmlspecialchars($k['daya'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>ULP</label><input type="text" name="ulp" value="<?= htmlspecialchars($k['ulp'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>Tanggal Diminta</label><input type="date" name="tanggal_diminta" value="<?= htmlspecialchars($k['tanggal_diminta'] ?? '') ?>"></div>
+                        <div class="g2-field"><label>No. SPK</label><input type="text" name="spk_number" value="<?= htmlspecialchars($k['spk_number'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Jenis Pekerjaan</label><input type="text" name="jenis_pekerjaan" value="<?= htmlspecialchars($k['jenis_pekerjaan'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>IDPEL</label><input type="text" name="idpel" value="<?= htmlspecialchars($k['idpel'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Nama Pelanggan</label><input type="text" name="customer_name" value="<?= htmlspecialchars($k['customer_name'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Alamat Pelanggan</label><input type="text" name="customer_address" value="<?= htmlspecialchars($k['customer_address'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Daya</label><input type="text" name="daya" value="<?= htmlspecialchars($k['daya'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>ULP</label><input type="text" name="ulp" value="<?= htmlspecialchars($k['ulp'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Tanggal Diminta</label><input type="date" name="tanggal_diminta" value="<?= htmlspecialchars($k['tanggal_diminta'] ?? '') ?>" <?= $disabledAttr ?>></div>
                     </div>
 
                     <div class="g2-table-wrap">
@@ -750,9 +903,9 @@ $vendors = getVendors($db);
                                 <td data-label="Satuan"><?= htmlspecialchars($it['unit'] ?? '-') ?></td>
                                 <td data-label="Diminta">
                                     <input type="hidden" name="item_id[]" value="<?= $it['id'] ?>">
-                                    <input type="number" min="0" name="item_requested[]" value="<?= (int)$it['quantity_requested'] ?>">
+                                    <input type="number" min="0" name="item_requested[]" value="<?= (int)$it['quantity_requested'] ?>" <?= $disabledAttr ?>>
                                 </td>
-                                <td data-label="Diterima"><input type="number" min="0" name="item_received[]" value="<?= (int)$it['quantity_received'] ?>"></td>
+                                <td data-label="Diterima"><input type="number" min="0" name="item_received[]" value="<?= (int)$it['quantity_received'] ?>" <?= $disabledAttr ?>></td>
                             </tr>
                         <?php endforeach; ?>
                         </tbody>
@@ -760,13 +913,15 @@ $vendors = getVendors($db);
                     </div>
 
                     <div class="g2-grid">
-                        <div class="g2-field"><label>Setuju</label><input type="text" name="setuju_name" value="<?= htmlspecialchars($k['setuju_name'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>Kepala Gudang</label><input type="text" name="kepala_gudang_name" value="<?= htmlspecialchars($k['kepala_gudang_name'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>Pemeriksa / Pengawas</label><input type="text" name="pemeriksa_pengawas_name" value="<?= htmlspecialchars($k['pemeriksa_pengawas_name'] ?? '') ?>"></div>
-                        <div class="g2-field"><label>Penerima</label><input type="text" name="penerima_name" value="<?= htmlspecialchars($k['penerima_name'] ?? '') ?>"></div>
+                        <div class="g2-field"><label>Setuju</label><input type="text" name="setuju_name" value="<?= htmlspecialchars($k['setuju_name'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Kepala Gudang</label><input type="text" name="kepala_gudang_name" value="<?= htmlspecialchars($k['kepala_gudang_name'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Pemeriksa / Pengawas</label><input type="text" name="pemeriksa_pengawas_name" value="<?= htmlspecialchars($k['pemeriksa_pengawas_name'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field"><label>Penerima</label><input type="text" name="penerima_name" value="<?= htmlspecialchars($k['penerima_name'] ?? '') ?>" <?= $disabledAttr ?>></div>
                     </div>
 
-                    <button type="submit" name="update_g2_k7" class="g2-save-btn"><i class="fas fa-save"></i> Simpan Perubahan</button>
+                    <?php if (!$isReadOnly): ?>
+                        <button type="submit" name="update_g2_k7" class="g2-save-btn"><i class="fas fa-save"></i> Simpan Perubahan</button>
+                    <?php endif; ?>
                 </form>
 
                 <div class="g2-print-row">
@@ -791,6 +946,94 @@ $vendors = getVendors($db);
     window.NORMALISASI_DATA = <?= json_encode(getNormalisasiData()) ?>;
 </script>
 <script src="js/script.js?v=<?= filemtime(__DIR__ . '/js/script.js') ?>"></script>
+<script>
+    // Dynamic SN input listeners for static DPB edit page in gudang2_view.php
+    document.addEventListener("DOMContentLoaded", function() {
+        var form = document.getElementById("g2DpbForm");
+        if (!form) return;
+        
+        var snCells = form.querySelectorAll('.sn-cell-container');
+        snCells.forEach(function(cell) {
+            var row = cell.closest('tr');
+            var recvInput = row.querySelector('.item-recv-input');
+            if (recvInput) {
+                var updateHandler = function() {
+                    var qty = parseFloat(recvInput.value) || 0;
+                    var materialName = cell.getAttribute('data-material-name');
+                    var itemId = cell.getAttribute('data-item-id');
+                    var savedSnAttr = cell.getAttribute('data-saved-sn') || '';
+                    var savedSns = savedSnAttr.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
 
+                    if (isMaterialWajibSN(materialName)) {
+                        if (qty <= 0) {
+                            cell.innerHTML = '<span style="color:#64748b; font-size:11px;">Tidak ada material diterima</span>';
+                        } else {
+                            var html = '<div style="display:flex; flex-direction:column; gap:6px; margin:4px 0;">';
+                            for (var j = 0; j < qty; j++) {
+                                var val = savedSns[j] || '';
+                                html += '<div style="display:flex; align-items:center; gap:8px;">' +
+                                        '<span style="font-size:11px; color:#64748b; white-space:nowrap;">SN ' + (j + 1) + ':</span>' +
+                                        '<input type="text" name="item_sn_' + itemId + '[]" value="' + escapeHtml(val) + '" class="form-control sn-input-field" placeholder="Masukkan SN ' + (j + 1) + '" style="font-size:12px; padding:4px 8px; width:100%; border-radius:6px; border:1px solid #cbd5e1;" required>' +
+                                        '</div>';
+                            }
+                            html += '</div>';
+                            cell.innerHTML = html;
+                        }
+                    } else {
+                        var val = savedSns.join(', ');
+                        cell.innerHTML = '<input type="text" name="item_sn_' + itemId + '[]" value="' + escapeHtml(val) + '" class="form-control" placeholder="Optional SN" style="font-size:12px; padding:4px 8px; width:100%; border-radius:6px; border:1px solid #cbd5e1;">';
+                    }
+                };
+
+                updateHandler();
+                recvInput.addEventListener('input', updateHandler);
+                recvInput.addEventListener('change', updateHandler);
+            }
+        });
+
+        form.addEventListener('submit', function(e) {
+            var inputs = form.querySelectorAll('.item-recv-input');
+            var ok = true;
+            var currentRequestSns = [];
+            inputs.forEach(function(recvInput) {
+                if (!ok) return;
+                var row = recvInput.closest('tr');
+                var cell = row.querySelector('.sn-cell-container');
+                if (cell) {
+                    var materialName = cell.getAttribute('data-material-name');
+                    var qty = parseFloat(recvInput.value) || 0;
+                    if (isMaterialWajibSN(materialName) && qty > 0) {
+                        var snFields = cell.querySelectorAll('.sn-input-field');
+                        if (snFields.length !== qty) {
+                            alert('Jumlah input SN tidak sama dengan jumlah Diterima untuk material: ' + materialName);
+                            e.preventDefault();
+                            ok = false;
+                            return;
+                        }
+                        snFields.forEach(function(f) {
+                            var val = f.value.trim();
+                            if (!val) {
+                                alert('Serial Number (SN) wajib diisi untuk material: ' + materialName);
+                                e.preventDefault();
+                                f.focus();
+                                ok = false;
+                                return;
+                            }
+                            if (currentRequestSns.indexOf(val.toLowerCase()) !== -1) {
+                                alert('Serial Number (SN) "' + val + '" tidak boleh diduplikat dalam satu pengajuan.');
+                                e.preventDefault();
+                                f.focus();
+                                ok = false;
+                                return;
+                            }
+                            currentRequestSns.push(val.toLowerCase());
+                        });
+                    }
+                }
+            });
+            return ok;
+        });
+    });
+</script>
 </body>
 </html>

@@ -6,6 +6,9 @@ if (!isLoggedIn()) {
     header("Location: index.php");
     exit();
 }
+if (isVendor()) {
+    die('Akses ditolak: Vendor tidak diperbolehkan mengakses dokumen Surat Jalan.');
+}
 
 $tug = trim($_GET['tug'] ?? '');
 $dpb = $tug !== '' ? getDpbByTug($db, $tug) : null;
@@ -17,22 +20,26 @@ if (isVendor() && (int)$dpb['vendor_id'] !== (int)currentVendorId()) {
     die('Anda tidak memiliki akses untuk mencetak DPB ini.');
 }
 
-$ROMAWI_BULAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
-$d = $dpb['tanggal_diminta'] ? strtotime($dpb['tanggal_diminta']) : time();
-$noSurat = '............. /LOG.00.02/GD. ARIES/' . $ROMAWI_BULAN[(int)date('n', $d) - 1] . '/' . date('Y', $d);
+if (empty($dpb['surat_jalan_number'])) {
+    $sjNumber = generateNextSuratJalanNumber($db, $dpb['tanggal_diminta'] ?: date('Y-m-d'));
+    $stmt = $db->prepare("UPDATE dpb_transactions SET surat_jalan_number = ? WHERE id = ?");
+    $stmt->execute([$sjNumber, $dpb['id']]);
+    $dpb['surat_jalan_number'] = $sjNumber;
+}
+$noSurat = $dpb['surat_jalan_number'];
 
 $items = $dpb['items'];
-while (count($items) < 10) { $items[] = null; }
+while (count($items) < 5) { $items[] = null; }
 ?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
 <meta charset="UTF-8">
-<title>Surat Angkutan - <?= htmlspecialchars($dpb['tug_number']) ?></title>
+<title>Surat Angkutan - <?= htmlspecialchars($dpb['surat_jalan_number'] ?: $dpb['tug_number']) ?></title>
 <style>
   * { box-sizing:border-box; }
-  @page { size: A4; margin: 10mm; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size:12px; color:#000; margin:0; padding:20px; background:#ddd; }
+  @page { size: A4; margin: 5mm; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size:11px; color:#000; margin:0; padding:10px; background:#ddd; }
   .toolbar { max-width:900px; margin:0 auto 14px; display:flex; gap:10px; }
   .toolbar button, .toolbar a {
     font-size:14px; padding:8px 18px; border-radius:30px; border:none; cursor:pointer;
@@ -41,22 +48,22 @@ while (count($items) < 10) { $items[] = null; }
   .btn-print { background:#ffd966; color:#082038; }
   .btn-back { background:#eee; color:#333; }
 
-  .sheet { background:#fff; max-width:900px; margin:0 auto; padding:20px 26px; border:1px solid #999; }
+  .sheet { background:#fff; max-width:900px; margin:0 auto; padding:12px 18px; border:1px solid #999; }
 
   .head-row { display:flex; justify-content:space-between; align-items:flex-start; }
-  .head-left { font-size:12px; font-weight:700; line-height:1.5; }
+  .head-left { font-size:11px; font-weight:700; line-height:1.4; }
   .head-right {
     border:1px solid #000; font-size:9.5px; text-align:center; width:220px;
   }
-  .head-right .row1 { border-bottom:1px solid #000; padding:3px; }
-  .head-right .row2 { padding:5px 8px; font-weight:700; }
+  .head-right .row1 { border-bottom:1px solid #000; padding:2px; }
+  .head-right .row2 { padding:4px 6px; font-weight:700; }
 
-  .title-block { text-align:center; margin:14px 0 10px; }
-  .title-block h1 { font-size:17px; margin:0 0 2px; text-decoration:underline; letter-spacing:1px; }
-  .title-block .no-surat { font-size:11px; }
+  .title-block { text-align:center; margin:8px 0 6px; }
+  .title-block h1 { font-size:16px; margin:0 0 2px; text-decoration:underline; letter-spacing:1px; }
+  .title-block .no-surat { font-size:10.5px; }
 
-  table.info-table { width:100%; border-collapse:collapse; margin-bottom:10px; }
-  table.info-table td { vertical-align:top; padding:2px 4px; font-size:11.5px; }
+  table.info-table { width:100%; border-collapse:collapse; margin-bottom:6px; }
+  table.info-table td { vertical-align:top; padding:1px 4px; font-size:10.5px; }
   .dotted { border-bottom:1px dotted #000; display:inline-block; min-width:170px; }
   .bold-right { font-weight:700; text-align:right; }
   .underline-val { text-decoration:underline; }
@@ -71,41 +78,41 @@ while (count($items) < 10) { $items[] = null; }
   .bottom-line .info-colon { flex-shrink:0; width:12px; }
   .bottom-line .info-value { flex:1; }
 
-  table.items { width:100%; border-collapse:collapse; margin:10px 0; }
-  table.items th, table.items td { border:1px solid #000; padding:4px 6px; font-size:11px; text-align:center; }
+  table.items { width:100%; border-collapse:collapse; margin:6px 0; }
+  table.items th, table.items td { border:1px solid #000; padding:3px 5px; font-size:10.5px; text-align:center; }
   table.items th { font-weight:700; }
   table.items td.left { text-align:left; }
 
   table.bottom-frame { width:100%; border-collapse:collapse; margin-top:-1px; }
-  table.bottom-frame td { border:1px solid #000; padding:6px 10px; font-size:11.5px; vertical-align:top; }
+  table.bottom-frame td { border:1px solid #000; padding:4px 8px; font-size:10.5px; vertical-align:top; }
   .tug-box { text-align:center; }
-  .tug-box .tug-number { color:#c00; font-weight:800; font-size:16px; line-height:1.3; border:2px solid #c00; padding:8px 14px; display:inline-block; }
+  .tug-box .tug-number { color:#c00; font-weight:800; font-size:14px; line-height:1.2; border:2px solid #c00; padding:6px 12px; display:inline-block; }
 
   table.daya-frame { width:100%; border-collapse:collapse; margin-top:-1px; }
-  table.daya-frame td { border:1px solid #000; padding:6px 10px; font-size:11.5px; vertical-align:top; }
+  table.daya-frame td { border:1px solid #000; padding:4px 8px; font-size:10.5px; vertical-align:top; }
 
-  .receive-row { display:flex; justify-content:space-between; margin:16px 0 6px; font-size:11.5px; }
-  .mengetahui { text-align:center; font-weight:700; margin:10px 0 30px; font-size:11.5px; }
+  .receive-row { display:flex; justify-content:space-between; margin:8px 0 4px; font-size:10.5px; }
+  .mengetahui { text-align:center; font-weight:700; margin:6px 0 16px; font-size:10.5px; }
 
   .sign-grid { display:flex; justify-content:space-between; gap:16px; }
-  .sign-col { flex:1; text-align:left; font-size:11.5px; }
-  .sign-role { font-weight:700; margin:0 0 34px; }
+  .sign-col { flex:1; text-align:left; font-size:10.5px; }
+  .sign-role { font-weight:700; margin:0 0 20px; }
   .sign-name { border-top:1px solid #000; padding-top:4px; min-height:14px; }
 
   .header-section {
     background-color: #e8f5e9 !important; /* Hijau muda pastel */
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
-    padding: 16px 20px;
-    border-radius: 12px;
-    margin-bottom: 15px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 8px;
     border: 1px solid #c8e6c9;
   }
 
   @media print {
-    body { background:#fff; padding:0; }
+    body { background:#fff; padding:0; margin:0; }
     .toolbar { display:none; }
-    .sheet { border:none; max-width:100%; }
+    .sheet { border:none; max-width:100%; padding: 4px 6px; }
     .header-section { border: 1px solid #c8e6c9; }
   }
 </style>
@@ -113,7 +120,8 @@ while (count($items) < 10) { $items[] = null; }
 <body>
 
 <div class="toolbar">
-  <a href="index.php?page=dpb&tug=<?= urlencode($dpb['tug_number']) ?>" class="btn-back">&larr; Kembali</a>
+  <?php $backPage = ($dpb['is_manual_sj'] ?? false) ? 'surat_jalan' : 'dpb'; ?>
+  <a href="index.php?page=<?= $backPage ?>&tug=<?= urlencode($dpb['tug_number']) ?>" class="btn-back">&larr; Kembali</a>
   <button class="btn-print" onclick="window.print()">Cetak / Simpan PDF</button>
 </div>
 
@@ -121,10 +129,13 @@ while (count($items) < 10) { $items[] = null; }
 
   <div class="header-section">
     <div class="head-row">
-      <div class="head-left">
-        PT PLN (PERSERO)<br>
-        UNIT INDUK DISTRIBUSI (UID) JAWA TIMUR<br>
-        UNIT PELAKSANA PELAYANAN PELANGGAN (UP3) MALANG
+      <div class="head-left" style="display: flex; align-items: flex-start; gap: 8px;">
+        <img src="images/logoPln.png?v=2" style="width: 42px; height: auto; margin-top: 2px;">
+        <div style="font-size: 11px; font-weight: 700; line-height: 1.4;">
+          PT PLN (PERSERO)<br>
+          UNIT INDUK DISTRIBUSI (UID) JAWA TIMUR<br>
+          UNIT PELAKSANA PELAYANAN PELANGGAN (UP3) MALANG
+        </div>
       </div>
       <div class="head-right">
         <div class="row1">1. Pengantar &nbsp; 2. Security &nbsp; 3. Pengambil material</div>
@@ -211,7 +222,7 @@ while (count($items) < 10) { $items[] = null; }
 
   <div class="receive-row">
     <div>Diterima tgl <?= $dpb['diterima_tgl'] ? htmlspecialchars(date('d-m-Y', strtotime($dpb['diterima_tgl']))) : '.......................' ?></div>
-    <div>Malang, .......................</div>
+    <div>Malang, <?= $dpb['malang_tanggal'] ? htmlspecialchars(date('d-m-Y', strtotime($dpb['malang_tanggal']))) : '.......................' ?></div>
   </div>
 
   <div class="mengetahui">Mengetahui,</div>

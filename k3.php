@@ -130,15 +130,26 @@ if (isset($_POST['update_k3_received'])) {
     $kodes = $_POST['item_kode'] ?? [];
     $harga = $_POST['item_harga_satuan'] ?? [];
 
+    $k3Id = null;
+    if (!empty($ids)) {
+        $stmt = $db->prepare("SELECT k3_id FROM k3_items WHERE id = ?");
+        $stmt->execute([$ids[0]]);
+        $k3Id = $stmt->fetchColumn();
+    }
+
+    if ($k3Id) {
+        $stmtCheck = $db->prepare("SELECT status FROM k3_transactions WHERE id = ?");
+        $stmtCheck->execute([$k3Id]);
+        $currentStatus = $stmtCheck->fetchColumn();
+        if ($currentStatus === 'selesai') {
+            $_SESSION['error'] = "Data surat yang sudah selesai tidak dapat diubah!";
+            header("Location: index.php?page=k3&tug=" . urlencode($tug));
+            exit();
+        }
+    }
+
     try {
         $db->beginTransaction();
-
-        $k3Id = null;
-        if (!empty($ids)) {
-            $stmt = $db->prepare("SELECT k3_id FROM k3_items WHERE id = ?");
-            $stmt->execute([$ids[0]]);
-            $k3Id = $stmt->fetchColumn();
-        }
 
         foreach ($ids as $i => $itemId) {
             $val = (int)($received[$i] ?? 0);
@@ -208,6 +219,16 @@ if (isset($_POST['update_k3_details'])) {
     $noDpbBukti = trim($_POST['no_dpb_bukti'] ?? '');
     $lokasiPenempatan = trim($_POST['lokasi_penempatan'] ?? '');
 
+    // Cek status K3 saat ini
+    $stmtCheck = $db->prepare("SELECT status FROM k3_transactions WHERE id = ?");
+    $stmtCheck->execute([$id]);
+    $currentStatus = $stmtCheck->fetchColumn();
+    if ($currentStatus === 'selesai') {
+        $_SESSION['error'] = "Data surat yang sudah selesai tidak dapat diubah!";
+        header("Location: index.php?page=k3&tug=" . urlencode($tug));
+        exit();
+    }
+
     $stmt = $db->prepare("UPDATE k3_transactions SET kondisi_material = ?, keterangan = ?, nomor_seri = ?, no_dpb_bukti = ?, lokasi_penempatan = ? WHERE id = ?");
     $stmt->execute([$kondisi, $keterangan, $nomorSeri, $noDpbBukti, $lokasiPenempatan, $id]);
 
@@ -232,6 +253,16 @@ if (isset($_POST['update_k3_signers'])) {
     $pemeriksaPengawas = trim($_POST['pemeriksa_pengawas_name'] ?? '');
     $yangMenyerahkan = trim($_POST['yang_menyerahkan_name'] ?? '');
 
+    // Cek status K3 saat ini
+    $stmtCheck = $db->prepare("SELECT status FROM k3_transactions WHERE id = ?");
+    $stmtCheck->execute([$id]);
+    $currentStatus = $stmtCheck->fetchColumn();
+    if ($currentStatus === 'selesai') {
+        $_SESSION['error'] = "Data surat yang sudah selesai tidak dapat diubah!";
+        header("Location: index.php?page=k3&tug=" . urlencode($tug));
+        exit();
+    }
+
     $stmt = $db->prepare("UPDATE k3_transactions SET setuju_name = ?, kepala_gudang_name = ?, pemeriksa_pengawas_name = ?, yang_menyerahkan_name = ? WHERE id = ?");
     $stmt->execute([$setuju, $kepalaGudang, $pemeriksaPengawas, $yangMenyerahkan, $id]);
 
@@ -250,6 +281,17 @@ if (isset($_GET['delete_k3'])) {
         exit();
     }
     $id = $_GET['delete_k3'];
+
+    // Cek status K3 saat ini
+    $stmtCheck = $db->prepare("SELECT status FROM k3_transactions WHERE id = ?");
+    $stmtCheck->execute([$id]);
+    $currentStatus = $stmtCheck->fetchColumn();
+    if ($currentStatus === 'selesai') {
+        $_SESSION['error'] = "Data surat yang sudah selesai tidak dapat dihapus!";
+        header("Location: index.php?page=k3");
+        exit();
+    }
+
     $stmt = $db->prepare("DELETE FROM k3_transactions WHERE id = ?");
     $stmt->execute([$id]);
     $_SESSION['success'] = "Data K3 berhasil dihapus.";

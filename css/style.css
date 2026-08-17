@@ -107,7 +107,7 @@ a {
   cursor: pointer;
   border: none;
   font-family: inherit;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .btn-outline {
@@ -323,7 +323,7 @@ a {
 .form-group label {
   display: block;
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--navy);
   margin-bottom: 0.35rem;
 }
@@ -374,7 +374,7 @@ thead th {
   background: var(--blue-light);
   color: var(--navy);
   padding: 0.7rem 0.9rem;
-  font-weight: 600;
+  font-weight: 500;
 }
 tbody td {
   padding: 0.65rem 0.9rem;
@@ -639,7 +639,7 @@ tbody tr:hover {
 .role-badge {
   display: inline-block;
   font-size: 0.68rem;
-  font-weight: 700;
+  font-weight: 500;
   padding: 0.15rem 0.55rem;
   border-radius: 20px;
   margin-left: 0.4rem;
@@ -665,7 +665,7 @@ tbody tr:hover {
 .status-badge {
   display: inline-block;
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: 500;
   padding: 0.35rem 0.9rem;
   border-radius: 20px;
   white-space: nowrap;
@@ -705,6 +705,9 @@ tbody tr:hover {
   border-radius: 14px;
   padding: 0.9rem 1rem 0.3rem;
   margin-bottom: 0.8rem;
+}
+.dpb-item-row .form-group {
+  min-width: 50px !important;
 }
 
 /* =========================================================
@@ -888,7 +891,7 @@ body.adm-body {
 .adm-brand-text {
   color: #fff;
   font-size: 20px; /* Tulisan VOLTA: Font 20px */
-  font-weight: 700; /* Bold */
+  font-weight: 600; /* Medium-SemiBold */
   letter-spacing: 0.5px;
   white-space: nowrap;
 }
@@ -903,7 +906,7 @@ body.adm-body {
   color: #ffffff;
   opacity: 0.9; /* Opacity sekitar 90% */
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 500;
   margin: 0 0 4px;
   line-height: 1.3;
   white-space: nowrap;
@@ -939,7 +942,7 @@ body.adm-body {
   color: #ffffff;
   text-decoration: none;
   font-size: 16px; /* Menu: 16px (500) */
-  font-weight: 500;
+  font-weight: 400;
   border-left: 4px solid transparent;
   border-radius: 12px; /* Border Radius: 12px */
   transition: background 200ms ease, color 200ms ease, border-color 200ms ease, transform 200ms ease;
@@ -963,7 +966,7 @@ body.adm-body {
 .adm-nav-item.active {
   background: rgba(255, 255, 255, 0.12); /* Active: rgba(255,255,255,.12) */
   color: #ffffff;
-  font-weight: 700;
+  font-weight: 500;
   border-left-color: var(--sidebar-accent); /* Border kiri: 4px warna kuning PLN */
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); /* Shadow sangat tipis */
   border-radius: 12px; /* Radius: 12px */
@@ -1013,7 +1016,7 @@ body.adm-body {
 .adm-profile-name {
   color: #ffffff;
   font-size: 16px; /* Nama: 16px */
-  font-weight: 600;
+  font-weight: 500;
   display: block;
   white-space: nowrap;
   overflow: hidden;
@@ -1023,7 +1026,7 @@ body.adm-body {
 .adm-profile-badge {
   display: inline-block;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 500;
   padding: 1px 6px;
   border-radius: 20px;
   background: var(--gold);
@@ -1056,7 +1059,7 @@ body.adm-body {
   text-decoration: none;
   border-radius: 12px; /* Radius: 12px */
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 500;
   font-family: inherit;
   cursor: pointer;
   transition: background 200ms ease, color 200ms ease, border-color 200ms ease;
@@ -1168,7 +1171,7 @@ body.adm-body {
 }
 .adm-topbar-username {
   font-size: 15px; /* Body: 15px */
-  font-weight: 600;
+  font-weight: 500;
   color: var(--navy);
   white-space: nowrap;
 }
@@ -1293,7 +1296,7 @@ body.adm-body {
 
 .adm-kpi-number {
   font-size: 36px; /* Angka: 36px */
-  font-weight: 700; /* Bold */
+  font-weight: 600; /* SemiBold-Medium */
   color: var(--navy);
   line-height: 1.1;
   margin-bottom: 4px;
@@ -1328,7 +1331,7 @@ body.adm-body {
 }
 .adm-content .card h3 {
   font-size: 22px; /* Card Title: 22px */
-  font-weight: 600; /* 600 */
+  font-weight: 500; /* 500 */
   color: var(--navy);
   margin-top: 0;
   margin-bottom: 16px;
@@ -1464,5 +1467,54 @@ body.adm-body {
   box-shadow: var(--shadow);
   margin-bottom: 20px;
 }
+
+/* =========================================================
+   CUSTOM AUTOCOMPLETE DROP-DOWN LIST
+   ========================================================= */
+.autocomplete-suggestions-container {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 99999;
+  margin-top: 4px;
+}
+.autocomplete-suggestion-item {
+  padding: 8px 14px;
+  font-size: 13px;
+  color: #334155;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  border-bottom: 1px solid #f1f5f9;
+  text-align: left;
+}
+.autocomplete-suggestion-item:last-child {
+  border-bottom: none;
+}
+.autocomplete-suggestion-item:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+.autocomplete-suggestion-empty {
+  padding: 10px 14px;
+  font-size: 13px;
+  color: #94a3b8;
+  font-style: italic;
+  text-align: center;
+}
+
+tbody td strong,
+.table-wrap td strong,
+.table-wrap table td strong {
+  font-weight: 500 !important;
+}
+
+/* #g2DetailModal is now displayed inline and styled via inline cards */
 
 

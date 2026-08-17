@@ -232,39 +232,54 @@ if (isset($_GET['action']) && $_GET['action'] === 'import_confirm') {
 
 // TAMBAH MATERIAL
 if (isset($_POST['add_material'])) {
-    $name  = trim($_POST['material_name'] ?? '');
-    $unit  = $_POST['material_unit'] ?? 'BH';
-    $norm  = trim($_POST['material_norm'] ?? '');
-    $stock = (int) ($_POST['material_stock'] ?? 0);
+    $name           = trim($_POST['material_name'] ?? '');
+    $unit           = $_POST['material_unit'] ?? 'BH';
+    $norm           = trim($_POST['material_norm'] ?? '');
+    $stock          = (int) ($_POST['material_stock'] ?? 0);
+    $pabrikan       = trim($_POST['pabrikan'] ?? '');
+    $nomor_kontrak  = trim($_POST['nomor_kontrak'] ?? '');
+    $tanggal_datang = trim($_POST['tanggal_datang'] ?? '');
     if ($stock < 0) $stock = 0;
     
-    // Perubahan: Cegah normalisasi kosong & matikan generateNorm otomatis
     if ($norm === '') {
         $_SESSION['error'] = "Gagal: Nomor Normalisasi resmi dari PLN wajib diisi!";
         header("Location: index.php?page=material");
         exit();
     }
 
-    // --- PERBAIKAN: Cek apakah norm sudah ada di database ---
-    $cek = $db->prepare("SELECT COUNT(*) FROM materials WHERE norm = ?");
-    $cek->execute([$norm]);
-    if ($cek->fetchColumn() > 0) {
-        $_SESSION['error'] = "Gagal: Nomor Normalisasi '$norm' sudah terdaftar!";
-        header("Location: index.php?page=material");
-        exit();
-    }
-    // --------------------------------------------------------
-
     try {
-        $stmt = $db->prepare("INSERT INTO materials (name, norm, unit, stock) VALUES (?, ?, ?, ?)");
-        $stmt->execute([$name, $norm, $unit, $stock]);
-        $_SESSION['success'] = "Material berhasil ditambahkan!";
-    } catch (PDOException $e) {
-        if ($e->getCode() === '23505') {
-            $_SESSION['error'] = "Gagal: Nomor Normalisasi '$norm' sudah terdaftar!";
+        $db->beginTransaction();
+
+        // Check if norm already exists
+        $cek = $db->prepare("SELECT id, name, unit FROM materials WHERE norm = ?");
+        $cek->execute([$norm]);
+        $existing = $cek->fetch(PDO::FETCH_ASSOC);
+
+        if ($existing) {
+            $materialId = $existing['id'];
+            // Update stock of existing material
+            $stmt = $db->prepare("UPDATE materials SET stock = stock + ? WHERE id = ?");
+            $stmt->execute([$stock, $materialId]);
         } else {
-            $_SESSION['error'] = "Gagal menambahkan material: " . $e->getMessage();
+            // Insert new material
+            $stmt = $db->prepare("INSERT INTO materials (name, norm, unit, stock) VALUES (?, ?, ?, ?) RETURNING id");
+            $stmt->execute([$name, $norm, $unit, $stock]);
+            $materialId = $stmt->fetchColumn();
         }
+
+        // Insert into incoming_materials (if stock > 0)
+        if ($stock > 0) {
+            $stmtIncoming = $db->prepare("INSERT INTO incoming_materials (material_id, quantity, pabrikan, nomor_kontrak, tanggal_datang) VALUES (?, ?, ?, ?, ?)");
+            $stmtIncoming->execute([$materialId, $stock, $pabrikan, $nomor_kontrak, $tanggal_datang ? $tanggal_datang : null]);
+        }
+
+        $db->commit();
+        $_SESSION['success'] = "Material masuk berhasil disimpan!";
+    } catch (Exception $e) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        $_SESSION['error'] = "Gagal menyimpan material masuk: " . $e->getMessage();
     }
     header("Location: index.php?page=material");
     exit();

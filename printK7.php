@@ -6,6 +6,9 @@ if (!isLoggedIn()) {
     header("Location: index.php");
     exit();
 }
+if (isGudang2()) {
+    die('Akses ditolak: Petugas Gudang tidak diperbolehkan mengakses dokumen TUG.');
+}
 
 $tug = trim($_GET['tug'] ?? '');
 $k7 = $tug !== '' ? getK7ByTug($db, $tug) : null;
@@ -262,19 +265,19 @@ $tugBig = $tugParts[0] ?? 'TUG';
       <td style="width:25%;">
         <div class="sign-role">Setuju :</div>
         <div style="text-align:center; font-size:9.5px;">Asman Konstruksi</div>
-        <div class="sign-name"><?= htmlspecialchars($k7['setuju_name'] ?: DEFAULT_SIGNER_SETUJU) ?></div>
+        <div class="sign-name"><?= htmlspecialchars($k7['setuju_name'] ?? '') ?></div>
       </td>
       <td style="width:25%;">
         <div class="sign-role">Kepala Gudang :</div>
-        <div class="sign-name"><?= htmlspecialchars($k7['kepala_gudang_name'] ?: DEFAULT_SIGNER_KEPALA_GUDANG) ?></div>
+        <div class="sign-name"><?= htmlspecialchars($k7['kepala_gudang_name'] ?? '') ?></div>
       </td>
       <td style="width:25%;">
         <div class="sign-role">Pemeriksa &nbsp;&nbsp;Pengawas</div>
-        <div class="sign-name"><?= htmlspecialchars($k7['pemeriksa_pengawas_name'] ?: '') ?>&nbsp;</div>
+        <div class="sign-name"><?= htmlspecialchars($k7['pemeriksa_pengawas_name'] ?? '') ?>&nbsp;</div>
       </td>
       <td style="width:25%;">
         <div class="sign-role">Penerima <?= htmlspecialchars($k7['ulp'] ?: '') ?> :</div>
-        <div class="sign-name"><?= htmlspecialchars($k7['penerima_name'] ?: '') ?>&nbsp;</div>
+        <div class="sign-name"><?= htmlspecialchars($k7['penerima_name'] ?? '') ?>&nbsp;</div>
       </td>
     </tr>
   </table>
