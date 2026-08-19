@@ -266,7 +266,7 @@ function renderMaterialTable(list) {
 function renderMaterialPage() {
   var container = document.getElementById("materialListContainer");
   if (!container) return;
-  var isAdmin = window.IS_REAL_ADMIN === true;
+  var isAdmin = window.IS_ADMIN === true;
   var list = materialActiveList;
 
   if (list.length === 0) {
@@ -295,6 +295,13 @@ function renderMaterialPage() {
           '" onclick="return confirm(\'Yakin hapus material ini?\')" class="btn-danger" style="padding:0.3rem 0.7rem; border-radius:20px; font-size:0.75rem; text-decoration:none; display:inline-block;"><i class="fas fa-trash"></i> Hapus</a>' +
           "</td>"
         : "";
+      var stock = parseInt(m.stock ?? 0);
+      var daftung = parseInt(m.daftung ?? 0);
+      var selisih = stock - daftung;
+      var selisihHtml = selisih < 0 
+        ? '<span style="color: #ef4444; font-weight: bold;">' + selisih + '</span>' 
+        : String(selisih);
+
       return (
         "<tr><td>" +
         no +
@@ -305,7 +312,11 @@ function renderMaterialPage() {
         "</td><td>" +
         escapeHtml(m.unit) +
         "</td><td>" +
-        escapeHtml(String(m.stock ?? 0)) +
+        escapeHtml(String(stock)) +
+        "</td><td>" +
+        escapeHtml(String(daftung)) +
+        "</td><td>" +
+        selisihHtml +
         "</td>" +
         actionCell +
         "</tr>"
@@ -314,7 +325,7 @@ function renderMaterialPage() {
     .join("");
 
   var tableHtml =
-    '<div class="table-wrap"><table><thead><tr><th>No</th><th>Nama</th><th>Normalisasi</th><th>Satuan</th><th>Jumlah</th>' +
+    '<div class="table-wrap"><table><thead><tr><th>No</th><th>Nama</th><th>Normalisasi</th><th>Satuan</th><th>Stok</th><th>Daftung</th><th>Selisih</th>' +
     (isAdmin ? "<th>Aksi</th>" : "") +
     "</tr></thead><tbody>" +
     rows +
@@ -858,7 +869,7 @@ function loadDPB() {
               : data.status === "ditolak"
                 ? "status-ditolak"
                 : "status-belum";
-      var isReadOnly = !window.IS_ADMIN || (data.status === "selesai");
+      var isReadOnly = !window.IS_ADMIN;
 
       var items = (data.items || [])
         .map(function (it, i) {
@@ -871,7 +882,7 @@ function loadDPB() {
           } else {
             receivedCell = '<input type="number" step="any" min="0" name="item_received[]" value="' +
               (it.quantity_received ?? 0) +
-              '" style="width:80px;" class="item-recv-input"><input type="hidden" name="item_id[]" value="' +
+              '" style="width:80px;" class="item-recv-input" data-material-name="' + escapeHtml(it.material_name || '') + '" data-material-stock="' + (it.material_stock ?? 0) + '" data-old-received="' + (it.quantity_received ?? 0) + '"><input type="hidden" name="item_id[]" value="' +
               it.id +
               '">';
             snCell = '<div class="sn-cell-container" data-material-name="' + escapeHtml(it.material_name || '') + '" data-item-id="' + it.id + '" data-saved-sn="' + escapeHtml(it.sn || '') + '"></div>';
@@ -918,10 +929,13 @@ function loadDPB() {
           "</form>";
       }
 
-      var deleteBtn =
-        '<a href="dpb.php?delete_dpb=' +
-        data.id +
-        '" onclick="return confirm(\'Yakin hapus DPB ini?\')" class="btn-danger" style="padding:0.6rem 1.1rem; border-radius:30px; text-decoration:none; font-size:0.85rem;">Hapus DPB</a>';
+      var deleteBtn = "";
+      if (data.status !== "aktif" && data.status !== "selesai") {
+        deleteBtn =
+          '<a href="dpb.php?delete_dpb=' +
+          data.id +
+          '" onclick="return confirm(\'Yakin hapus DPB ini?\')" class="btn-danger" style="padding:0.6rem 1.1rem; border-radius:30px; text-decoration:none; font-size:0.85rem;">Hapus DPB</a>';
+      }
 
       var adminStatusForm = !window.IS_ADMIN
         ? ""
@@ -944,6 +958,13 @@ function loadDPB() {
           : '<div style="margin-top:0.8rem; display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-end;">' +
             deleteBtn +
             "</div>";
+      var vendorActions = "";
+      if (window.IS_VENDOR && (data.status === "aktif" || data.status === "selesai")) {
+        vendorActions =
+          '<div style="margin-top:0.8rem; display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-end;">' +
+          '<button type="button" class="btn-warning" onclick="printDPB()" style="padding:0.6rem 1.2rem; border-radius:10px; font-weight:600;"><i class="fas fa-print"></i> Cetak Surat Jalan</button>' +
+          "</div>";
+      }
 
       var sjNumberHtml = "";
       if (data.surat_jalan_number) {
@@ -984,6 +1005,7 @@ function loadDPB() {
         "</p>" +
         adminReceivedForm +
         adminStatusForm +
+        vendorActions +
         '<p class="ttd-mengetahui">Mengetahui,</p>' +
         buildTtdBox(
           [
@@ -1015,26 +1037,21 @@ function loadDPB() {
               var materialName = cell.getAttribute('data-material-name');
               var itemId = cell.getAttribute('data-item-id');
               var savedSnAttr = cell.getAttribute('data-saved-sn') || '';
-              var savedSns = savedSnAttr.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
 
               if (isMaterialWajibSN(materialName)) {
                 if (qty <= 0) {
                   cell.innerHTML = '<span style="color:#64748b; font-size:11px;">Tidak ada material diterima</span>';
                 } else {
-                  var html = '<div style="display:flex; flex-direction:column; gap:6px; margin:4px 0;">';
-                  for (var j = 0; j < qty; j++) {
-                    var val = savedSns[j] || '';
-                    html += '<div style="display:flex; align-items:center; gap:8px;">' +
-                            '<span style="font-size:11px; color:#64748b; white-space:nowrap;">SN ' + (j + 1) + ':</span>' +
-                            '<input type="text" name="item_sn_' + itemId + '[]" value="' + escapeHtml(val) + '" class="form-control sn-input-field" placeholder="Masukkan SN ' + (j + 1) + '" style="font-size:12px; padding:4px 8px; width:100%; border-radius:6px; border:1px solid #cbd5e1;" required>' +
-                            '</div>';
+                  var existingInput = cell.querySelector('.sn-input-field');
+                  if (!existingInput) {
+                    cell.innerHTML = '<input type="text" name="item_sn_' + itemId + '[]" value="' + escapeHtml(savedSnAttr) + '" class="form-control sn-input-field" placeholder="Masukkan Serial Number" style="font-size:12px; padding:4px 8px; width:100%; border-radius:6px; border:1px solid #cbd5e1;" required>';
                   }
-                  html += '</div>';
-                  cell.innerHTML = html;
                 }
               } else {
-                var val = savedSns.join(', ');
-                cell.innerHTML = '<input type="text" name="item_sn_' + itemId + '[]" value="' + escapeHtml(val) + '" class="form-control" placeholder="Optional SN" style="font-size:12px; padding:4px 8px; width:100%; border-radius:6px; border:1px solid #cbd5e1;">';
+                var existingInput = cell.querySelector('input');
+                if (!existingInput) {
+                  cell.innerHTML = '<input type="text" name="item_sn_' + itemId + '[]" value="' + escapeHtml(savedSnAttr) + '" class="form-control" placeholder="Optional SN" style="font-size:12px; padding:4px 8px; width:100%; border-radius:6px; border:1px solid #cbd5e1;">';
+                }
               }
             };
 
@@ -1052,38 +1069,48 @@ function loadDPB() {
             var currentRequestSns = [];
             inputs.forEach(function (recvInput) {
               if (!ok) return;
+              var qty = parseFloat(recvInput.value) || 0;
+              var stock = parseFloat(recvInput.getAttribute('data-material-stock')) || 0;
+              var oldRecv = parseFloat(recvInput.getAttribute('data-old-received')) || 0;
+              var maxAllowed = oldRecv + stock;
               var row = recvInput.closest('tr');
               var cell = row.querySelector('.sn-cell-container');
-              if (cell) {
-                var materialName = cell.getAttribute('data-material-name');
-                var qty = parseFloat(recvInput.value) || 0;
-                if (isMaterialWajibSN(materialName) && qty > 0) {
-                  var snFields = cell.querySelectorAll('.sn-input-field');
-                  if (snFields.length !== qty) {
-                    alert('Jumlah input SN tidak sama dengan jumlah Diterima untuk material: ' + materialName);
-                    e.preventDefault();
-                    ok = false;
-                    return;
-                  }
-                  snFields.forEach(function (f) {
-                    var val = f.value.trim();
-                    if (!val) {
-                      alert('Serial Number (SN) wajib diisi untuk material: ' + materialName);
-                      e.preventDefault();
-                      f.focus();
-                      ok = false;
-                      return;
-                    }
-                    if (currentRequestSns.indexOf(val.toLowerCase()) !== -1) {
-                      alert('Serial Number (SN) "' + val + '" tidak boleh diduplikat dalam satu pengajuan.');
-                      e.preventDefault();
-                      f.focus();
-                      ok = false;
-                      return;
-                    }
-                    currentRequestSns.push(val.toLowerCase());
-                  });
+              var materialName = cell ? cell.getAttribute('data-material-name') : '';
+
+              // Stock validation
+              if (qty > maxAllowed) {
+                alert("Gagal menyimpan: Stok material \"" + materialName + "\" tidak mencukupi (tersisa " + stock + ")");
+                e.preventDefault();
+                recvInput.focus();
+                ok = false;
+                return;
+              }
+
+              if (cell && isMaterialWajibSN(materialName) && qty > 0) {
+                var snFields = cell.querySelectorAll('.sn-input-field');
+                if (snFields.length === 0) {
+                  alert('Serial Number (SN) wajib diisi untuk material: ' + materialName);
+                  e.preventDefault();
+                  ok = false;
+                  return;
                 }
+                var f = snFields[0];
+                var val = f.value.trim();
+                if (!val) {
+                  alert('Serial Number (SN) wajib diisi untuk material: ' + materialName);
+                  e.preventDefault();
+                  f.focus();
+                  ok = false;
+                  return;
+                }
+                if (currentRequestSns.indexOf(val.toLowerCase()) !== -1) {
+                  alert('Serial Number (SN) "' + val + '" tidak boleh diduplikat dalam satu pengajuan.');
+                  e.preventDefault();
+                  f.focus();
+                  ok = false;
+                  return;
+                }
+                currentRequestSns.push(val.toLowerCase());
               }
             });
             return ok;
@@ -1360,7 +1387,7 @@ function dottedLine(width) {
 }
 
 function printDPB() {
-  if (!window.IS_ADMIN) {
+  if (!window.IS_ADMIN && !window.IS_VENDOR) {
     alert("Akses ditolak: Anda tidak diperbolehkan mencetak atau mengunduh Surat Jalan.");
     return;
   }
@@ -2896,6 +2923,8 @@ function renderOutgoingPage() {
       "<td><span class=\"badge\" style=\"background-color:#ffeef0; color:var(--danger); font-weight:700; padding:4px 8px; border-radius:8px;\">" + numberFormat(m.quantity) + "</span></td>" +
       "<td>" + escapeHtml(m.vendor_name) + "</td>" +
       "<td>" + escapeHtml(m.no_dpb) + "</td>" +
+      "<td>" + escapeHtml(m.surat_jalan || "-") + "</td>" +
+      "<td>" + escapeHtml(m.sn || "-") + "</td>" +
       "<td>" + (m.tanggal_keluar ? formatDate(m.tanggal_keluar) : "-") + "</td>" +
       "</tr>";
   }).join("");
@@ -2908,6 +2937,8 @@ function renderOutgoingPage() {
     '<th>Jumlah</th>' +
     '<th>Nama Vendor</th>' +
     '<th>Nomor DPB / TUG</th>' +
+    '<th>Nomor Surat Jalan</th>' +
+    '<th>Serial Number (SN)</th>' +
     '<th>Tanggal Keluar</th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table></div>';
     

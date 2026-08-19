@@ -41,8 +41,8 @@ if (isset($_GET['ajax'])) {
             echo json_encode(['error' => 'Akses ditolak.']);
             exit();
         }
-        $stmt = $db->query("SELECT di.id, di.quantity_received AS quantity, m.name AS material_name, m.norm AS material_norm, m.unit AS material_unit,
-                                   d.tug_number AS no_dpb, d.tanggal_diminta AS tanggal_keluar, v.name AS vendor_name
+        $stmt = $db->query("SELECT di.id, di.quantity_received AS quantity, di.sn AS sn, m.name AS material_name, m.norm AS material_norm, m.unit AS material_unit,
+                                   d.tug_number AS no_dpb, d.surat_jalan_number AS surat_jalan, d.tanggal_diminta AS tanggal_keluar, v.name AS vendor_name
                             FROM dpb_items di
                             JOIN dpb_transactions d ON di.dpb_id = d.id
                             JOIN materials m ON di.material_id = m.id
@@ -304,6 +304,9 @@ $hpage = isset($_GET['hpage']) ? max(1, (int)$_GET['hpage']) : 1;
 $q = trim($_GET['q'] ?? '');
 $startDate = trim($_GET['start'] ?? '');
 $endDate = trim($_GET['end'] ?? '');
+$q_active = trim($_GET['q_active'] ?? '');
+$start_active = trim($_GET['start_active'] ?? '');
+$end_active = trim($_GET['end_active'] ?? '');
 $riwayatStart = $_GET['start'] ?? '';
 $riwayatEnd = $_GET['end'] ?? '';
 
@@ -380,22 +383,47 @@ if ($page === 'dpb') {
     }
 
     $offsetActive = ($apage - 1) * $limit;
-    $vendorFilter = $is_vendor ? "AND d.vendor_id = " . (int)currentVendorId() : "";
+    $sqlCondsActive = ["d.status IN ('belum_jalan', 'aktif', 'menunggu_persetujuan')"];
+    $sqlParamsActive = [];
 
-    $countActiveStmt = $db->query("SELECT COUNT(*) FROM dpb_transactions d WHERE d.status IN ('belum_jalan', 'aktif', 'menunggu_persetujuan') $vendorFilter");
-    $totalActiveRows = (int)$countActiveStmt->fetchColumn();
+    if ($is_vendor) {
+        $sqlCondsActive[] = "d.vendor_id = ?";
+        $sqlParamsActive[] = currentVendorId();
+    }
+    if ($q_active !== '') {
+        $sqlCondsActive[] = "(d.tug_number ILIKE ? OR v.name ILIKE ?)";
+        $sqlParamsActive[] = '%' . $q_active . '%';
+        $sqlParamsActive[] = '%' . $q_active . '%';
+    }
+    if ($start_active !== '' && $end_active !== '') {
+        $sqlCondsActive[] = "d.tanggal_diminta BETWEEN ? AND ?";
+        $sqlParamsActive[] = $start_active;
+        $sqlParamsActive[] = $end_active;
+    }
+
+    $condsStrActive = implode(' AND ', $sqlCondsActive);
+
+    $countActiveQuery = "SELECT COUNT(*) FROM dpb_transactions d LEFT JOIN vendors v ON d.vendor_id = v.id WHERE $condsStrActive";
+    $stmtCountActive = $db->prepare($countActiveQuery);
+    $stmtCountActive->execute($sqlParamsActive);
+    $totalActiveRows = (int)$stmtCountActive->fetchColumn();
     $totalActivePages = ceil($totalActiveRows / $limit);
 
-    $activeDpbStmt = $db->prepare("
+    $activeQuery = "
         SELECT d.*, v.name AS vendor_name 
         FROM dpb_transactions d 
         LEFT JOIN vendors v ON d.vendor_id = v.id 
-        WHERE d.status IN ('belum_jalan', 'aktif', 'menunggu_persetujuan') $vendorFilter
+        WHERE $condsStrActive
         ORDER BY d.tanggal_diminta DESC, d.id DESC
         LIMIT ? OFFSET ?
-    ");
-    $activeDpbStmt->bindValue(1, $limit, PDO::PARAM_INT);
-    $activeDpbStmt->bindValue(2, $offsetActive, PDO::PARAM_INT);
+    ";
+    $activeDpbStmt = $db->prepare($activeQuery);
+    $paramIdxActive = 1;
+    foreach ($sqlParamsActive as $p) {
+        $activeDpbStmt->bindValue($paramIdxActive++, $p);
+    }
+    $activeDpbStmt->bindValue($paramIdxActive++, $limit, PDO::PARAM_INT);
+    $activeDpbStmt->bindValue($paramIdxActive++, $offsetActive, PDO::PARAM_INT);
     $activeDpbStmt->execute();
     $active_list = $activeDpbStmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -2294,12 +2322,38 @@ if ($page === 'riwayat') {
                         <h3 style="color:#0b2b4a;"><i class="fas fa-hourglass-half" style="color: #14828a;"></i> Daftar DPB Aktif</h3>
                         <p class="text-small" style="margin-bottom:1rem;">Menampilkan daftar DPB yang sedang berjalan atau menunggu diproses/diserahkan.</p>
                         
+                        <!-- Filter & Search Form for Active DPB -->
+                        <form method="GET" action="index.php" style="margin-bottom: 1.2rem; background: #f8fafc; padding: 1.2rem; border-radius: 14px; border: 1px solid #eef2f6;">
+                            <input type="hidden" name="page" value="dpb">
+                            <div class="flex-row" style="align-items: flex-end; gap: 1rem; flex-wrap: wrap;">
+                                <div class="form-group" style="flex: 1; min-width: 200px; margin-bottom: 0;">
+                                    <label style="font-size: 11px; text-transform: uppercase; font-weight:700;">Cari Nomor TUG / Vendor</label>
+                                    <input type="text" name="q_active" value="<?= htmlspecialchars($q_active) ?>" placeholder="TUG / Nama PT Vendor..." style="padding: 0.55rem 0.8rem; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13px; width: 100%;">
+                                </div>
+                                <div class="form-group" style="width: 150px; margin-bottom: 0;">
+                                    <label style="font-size: 11px; text-transform: uppercase; font-weight:700;">Dari Tanggal</label>
+                                    <input type="date" name="start_active" value="<?= htmlspecialchars($start_active) ?>" style="padding: 0.5rem 0.8rem; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13px; width: 100%;">
+                                </div>
+                                <div class="form-group" style="width: 150px; margin-bottom: 0;">
+                                    <label style="font-size: 11px; text-transform: uppercase; font-weight:700;">Sampai Tanggal</label>
+                                    <input type="date" name="end_active" value="<?= htmlspecialchars($end_active) ?>" style="padding: 0.5rem 0.8rem; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13px; width: 100%;">
+                                </div>
+                                <div style="display: flex; gap: 8px; margin-bottom: 0;">
+                                    <button type="submit" class="btn-success" style="padding: 0.6rem 1.2rem; border-radius: 8px; font-size: 13px;"><i class="fas fa-search"></i> Cari</button>
+                                    <?php if ($q_active !== '' || $start_active !== '' || $end_active !== ''): ?>
+                                        <a href="?page=dpb" class="btn btn-info" style="text-decoration:none; display: inline-flex; align-items:center; justify-content:center; padding: 0.6rem 1.2rem; border-radius: 8px; font-size: 13px; background:#64748b; color:#fff;">Reset</a>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </form>
+
                         <div class="table-wrap">
                             <table>
                                 <thead>
                                     <tr>
                                         <th style="width: 5%;">No</th>
                                         <th>Nomor TUG</th>
+                                        <th>Pelanggan</th>
                                         <th>Vendor</th>
                                         <th>Tanggal Diminta</th>
                                         <th>Status</th>
@@ -2309,7 +2363,7 @@ if ($page === 'riwayat') {
                                 <tbody>
                                     <?php if (empty($active_list)): ?>
                                         <tr>
-                                            <td colspan="6" style="text-align:center; padding:2rem; color:#777;">Tidak ada DPB aktif saat ini.</td>
+                                            <td colspan="7" style="text-align:center; padding:2rem; color:#777;">Tidak ada DPB aktif saat ini.</td>
                                         </tr>
                                     <?php else: ?>
                                         <?php 
@@ -2320,6 +2374,7 @@ if ($page === 'riwayat') {
                                             <tr>
                                                 <td><?= $startNum + $i ?></td>
                                                 <td onclick="autofillSearchTug('<?= htmlspecialchars($row['tug_number']) ?>')" style="cursor: pointer; color: var(--blue);"><strong><?= htmlspecialchars($row['tug_number']) ?></strong></td>
+                                                <td><?= htmlspecialchars($row['customer_name'] ?? '-') ?></td>
                                                 <td><?= htmlspecialchars($row['vendor_name'] ?? '-') ?></td>
                                                 <td><?= date('d-M-Y', strtotime($row['tanggal_diminta'])) ?></td>
                                                 <td><span class="status-badge <?= $statusClass ?>"><?= htmlspecialchars(dpbStatusLabel($row['status'])) ?></span></td>
@@ -3688,7 +3743,7 @@ if ($page === 'riwayat') {
     </div>
 </div>
 
-<?php if ($is_admin): ?>
+<?php if ($is_admin || $is_gudang2): ?>
 <div id="materialEditModal" class="modal">
     <div class="modal-content" style="max-width:480px;">
         <span class="close" onclick="closeMaterialEditModal()">&times;</span>
@@ -4160,7 +4215,10 @@ if ($page === 'riwayat') {
 
                 // Render into our clean modal container
                 var container = document.getElementById("g2DetailContentContainer");
-                container.innerHTML = html;
+                container.innerHTML = "";
+                while (target.firstChild) {
+                    container.appendChild(target.firstChild);
+                }
 
                 // Adjust any inner styling to fit inside the modal beautifully
                 // 1. Remove unnecessary card styling or borders inside modal

@@ -257,36 +257,37 @@ if (isset($_POST['update_received'])) {
         $dpbId = $stmt->fetchColumn();
     }
 
-    if ($dpbId) {
-        // Cek status DPB saat ini
-        $stmtCheck = $db->prepare("SELECT status FROM dpb_transactions WHERE id = ?");
-        $stmtCheck->execute([$dpbId]);
-        $currentStatus = $stmtCheck->fetchColumn();
-        if ($currentStatus === 'selesai') {
-            $_SESSION['error'] = "Data surat yang sudah selesai tidak dapat diubah!";
-            header("Location: index.php?page=dpb&tug=" . urlencode($tug));
-            exit();
-        }
-    }
+    // Status check block removed to allow editing received quantities even if status is 'selesai'
 
     // Validasi SN wajib dan keunikan sebelum menyimpan
     $currentRequestSns = [];
     foreach ($ids as $i => $itemId) {
         $newVal = max(0, (int)($received[$i] ?? 0));
         
-        // Ambil nama material
-        $stmtMat = $db->prepare("SELECT m.name FROM dpb_items di LEFT JOIN materials m ON di.material_id = m.id WHERE di.id = ?");
+        // Ambil nama material, stok saat ini, dan jumlah diterima lama
+        $stmtMat = $db->prepare("SELECT m.name, m.stock, di.quantity_received FROM dpb_items di LEFT JOIN materials m ON di.material_id = m.id WHERE di.id = ?");
         $stmtMat->execute([$itemId]);
-        $materialName = $stmtMat->fetchColumn();
-        
+        $matInfo = $stmtMat->fetch(PDO::FETCH_ASSOC);
+        $materialName = $matInfo['name'] ?? '';
+        $currentStock = (int)($matInfo['stock'] ?? 0);
+        $oldReceived  = (int)($matInfo['quantity_received'] ?? 0);
+        $maxAllowed   = $oldReceived + $currentStock;
+
+        // Validasi stok tidak boleh negatif / tidak mencukupi
+        if ($newVal > $maxAllowed) {
+            $_SESSION['error'] = "Gagal menyimpan: Stok material \"$materialName\" tidak mencukupi (tersisa $currentStock)";
+            header("Location: index.php?page=dpb&tug=" . urlencode($tug));
+            exit();
+        }
+
         // Dapatkan input SN dari post
         $snsArr = $_POST['item_sn_' . $itemId] ?? [];
         $snsArr = array_filter(array_map('trim', $snsArr));
         
         if (isMaterialWajibSN($materialName)) {
             if ($newVal > 0) {
-                if (count($snsArr) !== $newVal) {
-                    $_SESSION['error'] = "Jumlah Serial Number (SN) tidak sesuai dengan jumlah Diterima untuk material: $materialName";
+                if (empty($snsArr)) {
+                    $_SESSION['error'] = "Serial Number (SN) wajib diisi untuk material: $materialName";
                     header("Location: index.php?page=dpb&tug=" . urlencode($tug));
                     exit();
                 }

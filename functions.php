@@ -47,7 +47,18 @@ function getVendorById($db, $id) {
 
 // ---------- MATERIAL ----------
 function getMaterials($db) {
-    $stmt = $db->query("SELECT * FROM materials ORDER BY name");
+    $stmt = $db->query("
+        SELECT m.*, 
+               COALESCE((
+                   SELECT SUM(CASE WHEN di.quantity_requested > di.quantity_received THEN di.quantity_requested - di.quantity_received ELSE 0 END)
+                   FROM dpb_items di
+                   JOIN dpb_transactions d ON di.dpb_id = d.id
+                   WHERE di.material_id = m.id
+                     AND d.status != 'selesai'
+               ), 0) AS daftung
+        FROM materials m 
+        ORDER BY m.name
+    ");
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
@@ -170,7 +181,7 @@ function getDpbByTug($db, $tug) {
     if (!$dpb) return null;
 
     $stmt = $db->prepare("
-        SELECT di.*, m.name AS material_name, m.norm, m.unit
+        SELECT di.*, m.name AS material_name, m.norm, m.unit, m.stock AS material_stock
         FROM dpb_items di
         LEFT JOIN materials m ON di.material_id = m.id
         WHERE di.dpb_id = ?

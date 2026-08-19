@@ -12,7 +12,7 @@ if (!isLoggedIn()) {
 }
 
 // Hanya admin gudang PLN yang boleh menambah / mengubah / menghapus material master
-if (!isAdmin()) {
+if (!isAdmin() && !isGudang2()) {
     $_SESSION['error'] = "Hanya admin gudang PLN yang dapat mengelola data material.";
     header("Location: index.php?page=material");
     exit();
@@ -34,17 +34,33 @@ if (isset($_GET['action']) && $_GET['action'] === 'export') {
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename=export_material.csv');
     $output = fopen('php://output', 'w');
-    fputcsv($output, ['No', 'Nama Material', 'Kode Normalisasi', 'Satuan', 'Jumlah']);
+    fputcsv($output, ['No', 'Nama Material', 'Kode Normalisasi', 'Satuan', 'Stok', 'Daftung', 'Selisih']);
     
-    $stmt = $db->query("SELECT norm, name, unit, stock FROM materials ORDER BY name ASC");
+    $stmt = $db->query("
+        SELECT m.norm, m.name, m.unit, m.stock,
+               COALESCE((
+                   SELECT SUM(CASE WHEN di.quantity_requested > di.quantity_received THEN di.quantity_requested - di.quantity_received ELSE 0 END)
+                   FROM dpb_items di
+                   JOIN dpb_transactions d ON di.dpb_id = d.id
+                   WHERE di.material_id = m.id
+                     AND d.status != 'selesai'
+               ), 0) AS daftung
+        FROM materials m 
+        ORDER BY m.name ASC
+    ");
     $i = 1;
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $stock = (int)$row['stock'];
+        $daftung = (int)$row['daftung'];
+        $selisih = $stock - $daftung;
         fputcsv($output, [
             $i++,
             $row['name'],
             $row['norm'],
             $row['unit'],
-            $row['stock']
+            $stock,
+            $daftung,
+            $selisih
         ]);
     }
     fclose($output);

@@ -18,15 +18,7 @@ if (isset($_POST['update_g2_dpb'])) {
     $dpbId = $_POST['dpb_id'] ?? '';
     $tug   = trim($_POST['tug_number'] ?? '');
 
-    // Cek status DPB saat ini
-    $stmtCheck = $db->prepare("SELECT status FROM dpb_transactions WHERE id = ?");
-    $stmtCheck->execute([$dpbId]);
-    $currentStatus = $stmtCheck->fetchColumn();
-    if ($currentStatus === 'selesai') {
-        $_SESSION['error'] = "Data surat yang sudah selesai tidak dapat diubah!";
-        header("Location: index.php?tug=" . urlencode($tug));
-        exit();
-    }
+    // Status check block removed to allow editing received quantities even if status is 'selesai'
 
     // "Diterima Tanggal" selalu dipaksa ke tanggal hari ini saat disimpan
     $diterimaTgl = date('Y-m-d');
@@ -40,11 +32,22 @@ if (isset($_POST['update_g2_dpb'])) {
     foreach ($ids as $i => $itemId) {
         $qd = max(0, (int)($recv[$i] ?? 0));
         
-        // Ambil nama material dari database
-        $stmtMat = $db->prepare("SELECT m.name FROM dpb_items di LEFT JOIN materials m ON di.material_id = m.id WHERE di.id = ?");
+        // Ambil nama material, stok saat ini, dan jumlah diterima lama
+        $stmtMat = $db->prepare("SELECT m.name, m.stock, di.quantity_received FROM dpb_items di LEFT JOIN materials m ON di.material_id = m.id WHERE di.id = ?");
         $stmtMat->execute([$itemId]);
-        $materialName = $stmtMat->fetchColumn();
-        
+        $matInfo = $stmtMat->fetch(PDO::FETCH_ASSOC);
+        $materialName = $matInfo['name'] ?? '';
+        $currentStock = (int)($matInfo['stock'] ?? 0);
+        $oldReceived  = (int)($matInfo['quantity_received'] ?? 0);
+        $maxAllowed   = $oldReceived + $currentStock;
+
+        // Validasi stok tidak boleh negatif / tidak mencukupi
+        if ($qd > $maxAllowed) {
+            $_SESSION['error'] = "Gagal menyimpan: Stok material \"$materialName\" tidak mencukupi (tersisa $currentStock)";
+            header("Location: index.php?tug=" . urlencode($tug));
+            exit();
+        }
+
         // Dapatkan array input SN untuk item ini
         $snsArr = $_POST['item_sn_' . $itemId] ?? [];
         // Normalisasi
@@ -52,8 +55,8 @@ if (isset($_POST['update_g2_dpb'])) {
         
         if (isMaterialWajibSN($materialName)) {
             if ($qd > 0) {
-                if (count($snsArr) !== $qd) {
-                    $_SESSION['error'] = "Jumlah Serial Number (SN) tidak sesuai dengan jumlah Diterima untuk material: $materialName";
+                if (empty($snsArr)) {
+                    $_SESSION['error'] = "Serial Number (SN) wajib diisi untuk material: $materialName";
                     header("Location: index.php?tug=" . urlencode($tug));
                     exit();
                 }
@@ -708,7 +711,7 @@ $vendors = getVendors($db);
 
         <?php elseif ($found && $found['type'] === 'dpb'):
             $d = $found['data'];
-            $isReadOnly = ($d['status'] === 'selesai');
+            $isReadOnly = false;
             $disabledAttr = $isReadOnly ? 'disabled' : ''; ?>
             <div class="g2-result-card">
                 <h2><span class="g2-type-badge dpb">DPB</span> Nomor TUG: <?= htmlspecialchars($d['tug_number']) ?></h2>
@@ -756,7 +759,7 @@ $vendors = getVendors($db);
                                     <input type="number" min="0" name="item_requested[]" value="<?= (int)$it['quantity_requested'] ?>" <?= $disabledAttr ?>>
                                 </td>
                                 <td data-label="Diterima">
-                                    <input type="number" min="0" name="item_received[]" value="<?= (int)$it['quantity_received'] ?>" class="item-recv-input" <?= $disabledAttr ?>>
+                                    <input type="number" min="0" name="item_received[]" value="<?= (int)$it['quantity_received'] ?>" class="item-recv-input" data-material-name="<?= htmlspecialchars($it['material_name']) ?>" data-material-stock="<?= (int)($it['material_stock'] ?? 0) ?>" data-old-received="<?= (int)$it['quantity_received'] ?>" <?= $disabledAttr ?>>
                                 </td>
                                 <td data-label="SN">
                                     <?php if ($isReadOnly): ?>
@@ -962,26 +965,21 @@ $vendors = getVendors($db);
                     var materialName = cell.getAttribute('data-material-name');
                     var itemId = cell.getAttribute('data-item-id');
                     var savedSnAttr = cell.getAttribute('data-saved-sn') || '';
-                    var savedSns = savedSnAttr.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
 
                     if (isMaterialWajibSN(materialName)) {
                         if (qty <= 0) {
                             cell.innerHTML = '<span style="color:#64748b; font-size:11px;">Tidak ada material diterima</span>';
                         } else {
-                            var html = '<div style="display:flex; flex-direction:column; gap:6px; margin:4px 0;">';
-                            for (var j = 0; j < qty; j++) {
-                                var val = savedSns[j] || '';
-                                html += '<div style="display:flex; align-items:center; gap:8px;">' +
-                                        '<span style="font-size:11px; color:#64748b; white-space:nowrap;">SN ' + (j + 1) + ':</span>' +
-                                        '<input type="text" name="item_sn_' + itemId + '[]" value="' + escapeHtml(val) + '" class="form-control sn-input-field" placeholder="Masukkan SN ' + (j + 1) + '" style="font-size:12px; padding:4px 8px; width:100%; border-radius:6px; border:1px solid #cbd5e1;" required>' +
-                                        '</div>';
+                            var existingInput = cell.querySelector('.sn-input-field');
+                            if (!existingInput) {
+                                cell.innerHTML = '<input type="text" name="item_sn_' + itemId + '[]" value="' + escapeHtml(savedSnAttr) + '" class="form-control sn-input-field" placeholder="Masukkan Serial Number" style="font-size:12px; padding:4px 8px; width:100%; border-radius:6px; border:1px solid #cbd5e1;" required>';
                             }
-                            html += '</div>';
-                            cell.innerHTML = html;
                         }
                     } else {
-                        var val = savedSns.join(', ');
-                        cell.innerHTML = '<input type="text" name="item_sn_' + itemId + '[]" value="' + escapeHtml(val) + '" class="form-control" placeholder="Optional SN" style="font-size:12px; padding:4px 8px; width:100%; border-radius:6px; border:1px solid #cbd5e1;">';
+                        var existingInput = cell.querySelector('input');
+                        if (!existingInput) {
+                            cell.innerHTML = '<input type="text" name="item_sn_' + itemId + '[]" value="' + escapeHtml(savedSnAttr) + '" class="form-control" placeholder="Optional SN" style="font-size:12px; padding:4px 8px; width:100%; border-radius:6px; border:1px solid #cbd5e1;">';
+                        }
                     }
                 };
 
@@ -997,38 +995,48 @@ $vendors = getVendors($db);
             var currentRequestSns = [];
             inputs.forEach(function(recvInput) {
                 if (!ok) return;
+                var qty = parseFloat(recvInput.value) || 0;
+                var stock = parseFloat(recvInput.getAttribute('data-material-stock')) || 0;
+                var oldRecv = parseFloat(recvInput.getAttribute('data-old-received')) || 0;
+                var maxAllowed = oldRecv + stock;
                 var row = recvInput.closest('tr');
                 var cell = row.querySelector('.sn-cell-container');
-                if (cell) {
-                    var materialName = cell.getAttribute('data-material-name');
-                    var qty = parseFloat(recvInput.value) || 0;
-                    if (isMaterialWajibSN(materialName) && qty > 0) {
-                        var snFields = cell.querySelectorAll('.sn-input-field');
-                        if (snFields.length !== qty) {
-                            alert('Jumlah input SN tidak sama dengan jumlah Diterima untuk material: ' + materialName);
-                            e.preventDefault();
-                            ok = false;
-                            return;
-                        }
-                        snFields.forEach(function(f) {
-                            var val = f.value.trim();
-                            if (!val) {
-                                alert('Serial Number (SN) wajib diisi untuk material: ' + materialName);
-                                e.preventDefault();
-                                f.focus();
-                                ok = false;
-                                return;
-                            }
-                            if (currentRequestSns.indexOf(val.toLowerCase()) !== -1) {
-                                alert('Serial Number (SN) "' + val + '" tidak boleh diduplikat dalam satu pengajuan.');
-                                e.preventDefault();
-                                f.focus();
-                                ok = false;
-                                return;
-                            }
-                            currentRequestSns.push(val.toLowerCase());
-                        });
+                var materialName = cell ? cell.getAttribute('data-material-name') : '';
+
+                // Stock validation
+                if (qty > maxAllowed) {
+                    alert("Gagal menyimpan: Stok material \"" + materialName + "\" tidak mencukupi (tersisa " + stock + ")");
+                    e.preventDefault();
+                    recvInput.focus();
+                    ok = false;
+                    return;
+                }
+
+                if (cell && isMaterialWajibSN(materialName) && qty > 0) {
+                    var snFields = cell.querySelectorAll('.sn-input-field');
+                    if (snFields.length === 0) {
+                        alert('Serial Number (SN) wajib diisi untuk material: ' + materialName);
+                        e.preventDefault();
+                        ok = false;
+                        return;
                     }
+                    var f = snFields[0];
+                    var val = f.value.trim();
+                    if (!val) {
+                        alert('Serial Number (SN) wajib diisi untuk material: ' + materialName);
+                        e.preventDefault();
+                        f.focus();
+                        ok = false;
+                        return;
+                    }
+                    if (currentRequestSns.indexOf(val.toLowerCase()) !== -1) {
+                        alert('Serial Number (SN) "' + val + '" tidak boleh diduplikat dalam satu pengajuan.');
+                        e.preventDefault();
+                        f.focus();
+                        ok = false;
+                        return;
+                    }
+                    currentRequestSns.push(val.toLowerCase());
                 }
             });
             return ok;
