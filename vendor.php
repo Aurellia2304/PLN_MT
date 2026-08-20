@@ -184,14 +184,43 @@ if (isset($_GET['reject_app'])) {
     $app_id = (int)$_GET['reject_app'];
 
     try {
-        $stmt = $db->prepare("UPDATE vendor_applications SET status = 'Ditolak' WHERE id = ? AND status = 'Menunggu Persetujuan'");
+        $db->beginTransaction();
+
+        // 1. Ambil data pengajuan
+        $stmt = $db->prepare("SELECT * FROM vendor_applications WHERE id = ? AND status = 'Menunggu Persetujuan'");
         $stmt->execute([$app_id]);
-        if ($stmt->rowCount() > 0) {
-            $_SESSION['success'] = "Pengajuan vendor berhasil ditolak.";
-        } else {
-            $_SESSION['error'] = "Pengajuan tidak ditemukan atau sudah diproses.";
+        $app = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$app) {
+            throw new Exception("Data pengajuan tidak ditemukan atau sudah diproses!");
         }
+
+        // Cek duplikasi email di users
+        $stmt = $db->prepare("SELECT id FROM users WHERE email = ?");
+        $stmt->execute([$app['email']]);
+        if ($stmt->fetch()) {
+            throw new Exception("Email \"{$app['email']}\" sudah terdaftar sebagai pengguna aktif!");
+        }
+
+        // 2. Insert ke vendors (status nonaktif)
+        $stmt = $db->prepare("INSERT INTO vendors (name, address, phone, email, status) VALUES (?, ?, ?, ?, 'nonaktif') RETURNING id");
+        $stmt->execute([$app['name'], $app['address'], $app['phone'], $app['email']]);
+        $vendorId = $stmt->fetchColumn();
+
+        // 3. Insert ke users
+        $stmt = $db->prepare("INSERT INTO users (email, password_hash, full_name, role, vendor_id) VALUES (?, ?, ?, 'vendor', ?)");
+        $stmt->execute([$app['email'], $app['password_hash'], $app['name'], $vendorId]);
+
+        // 4. Update status pengajuan
+        $stmt = $db->prepare("UPDATE vendor_applications SET status = 'Ditolak' WHERE id = ?");
+        $stmt->execute([$app_id]);
+
+        $db->commit();
+        $_SESSION['success'] = "Pengajuan PT \"{$app['name']}\" berhasil ditolak. Vendor didaftarkan dengan status nonaktif.";
     } catch (Exception $e) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
         $_SESSION['error'] = "Gagal menolak pengajuan: " . $e->getMessage();
     }
     header("Location: index.php?page=vendor");

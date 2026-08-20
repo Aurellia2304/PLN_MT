@@ -324,9 +324,18 @@ function renderMaterialPage() {
     })
     .join("");
 
+  var actionHeader = isAdmin ? '<th style="width: 16%;">Aksi</th>' : '';
+  var nameWidth = isAdmin ? '32%' : '48%';
   var tableHtml =
-    '<div class="table-wrap"><table><thead><tr><th>No</th><th>Nama</th><th>Normalisasi</th><th>Satuan</th><th>Stok</th><th>Daftung</th><th>Selisih</th>' +
-    (isAdmin ? "<th>Aksi</th>" : "") +
+    '<div class="table-wrap"><table class="fixed-table"><thead><tr>' +
+    '<th style="width: 4%;">No</th>' +
+    '<th style="width: ' + nameWidth + ';">Nama</th>' +
+    '<th style="width: 12%;">Normalisasi</th>' +
+    '<th style="width: 8%;">Satuan</th>' +
+    '<th style="width: 8%;">Stok</th>' +
+    '<th style="width: 8%;">Daftung</th>' +
+    '<th style="width: 8%;">Selisih</th>' +
+    actionHeader +
     "</tr></thead><tbody>" +
     rows +
     "</tbody></table></div>";
@@ -835,11 +844,13 @@ function autofillVendorGeneric(prefix) {
 function loadDPB() {
   var tug = document.getElementById("tugNumberInput").value.trim();
   var result = document.getElementById("dpbResult");
+  var actions = document.getElementById("dpbActions");
   if (!result) return;
 
+  if (actions) actions.style.display = "none";
+
   if (!tug) {
-    result.innerHTML =
-      '<p class="text-small">Masukkan nomor TUG terlebih dahulu.</p>';
+    result.innerHTML = "";
     return;
   }
 
@@ -962,7 +973,7 @@ function loadDPB() {
       if (window.IS_VENDOR && (data.status === "aktif" || data.status === "selesai")) {
         vendorActions =
           '<div style="margin-top:0.8rem; display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-end;">' +
-          '<button type="button" class="btn-warning" onclick="printDPB()" style="padding:0.6rem 1.2rem; border-radius:10px; font-weight:600;"><i class="fas fa-print"></i> Cetak Surat Jalan</button>' +
+          '<button type="button" class="btn-warning" onclick="printDPB()" style="padding:0.6rem 1.2rem; border-radius:10px; font-weight:600;"><i class="fas fa-save"></i> Simpan Surat Jalan</button>' +
           "</div>";
       }
 
@@ -974,6 +985,7 @@ function loadDPB() {
       }
 
       result.innerHTML =
+        '<div class="card" style="margin-top:0;">' +
         '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.6rem;">' +
         "<p style='margin:0;'><strong>No. TUG:</strong> " +
         escapeHtml(data.tug_number || "-") +
@@ -1020,11 +1032,14 @@ function loadDPB() {
           "dpb.php",
           "dpb_id",
           "update_signers",
-          [
-            { field: "diterima_tgl", prefix: "Diterima tgl" },
-            { field: "malang_tanggal", prefix: "Malang," },
-          ],
-        );
+            [
+              { field: "diterima_tgl", prefix: "Diterima di" },
+              { field: "malang_tanggal", prefix: "Malang," },
+            ],
+        ) +
+        '</div>';
+
+      if (actions) actions.style.display = "flex";
 
       if (!isReadOnly) {
         var snCells = result.querySelectorAll('.sn-cell-container');
@@ -1610,10 +1625,13 @@ function saveDPBpdf() {
 function loadK3() {
   var tug = document.getElementById("k3TugInput").value.trim();
   var result = document.getElementById("k3Result");
+  var actions = document.getElementById("k3Actions");
   if (!result) return;
+
+  if (actions) actions.style.display = "none";
+
   if (!tug) {
-    result.innerHTML =
-      '<p class="text-small">Masukkan nomor TUG K3 terlebih dahulu.</p>';
+    result.innerHTML = "";
     return;
   }
   result.innerHTML = '<p class="text-small">Mencari data...</p>';
@@ -1772,6 +1790,7 @@ function loadK3() {
         : "";
 
       result.innerHTML =
+        '<div class="card" style="margin-top:0;">' +
         '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.6rem;">' +
         "<p style='margin:0;'><strong>No. TUG:</strong> " +
         escapeHtml(data.tug_number || "-") +
@@ -1822,7 +1841,14 @@ function loadK3() {
           "k3.php",
           "k3_id",
           "update_k3_signers",
-        );
+          [
+            { field: "diterima_tgl", prefix: "Diterima di" },
+            { field: "malang_tanggal", prefix: "Malang," },
+          ]
+        ) +
+        '</div>';
+
+      if (actions) actions.style.display = "flex";
     })
     .catch(function () {
       result.innerHTML = '<p class="text-small">Gagal memuat data K3.</p>';
@@ -1938,10 +1964,13 @@ function saveK3pdf() {
 function loadK7() {
   var tug = document.getElementById("k7TugInput").value.trim();
   var result = document.getElementById("k7Result");
+  var actions = document.getElementById("k7Actions");
   if (!result) return;
+
+  if (actions) actions.style.display = "none";
+
   if (!tug) {
-    result.innerHTML =
-      '<p class="text-small">Masukkan nomor TUG K7 terlebih dahulu.</p>';
+    result.innerHTML = "";
     return;
   }
   result.innerHTML = '<p class="text-small">Mencari data...</p>';
@@ -2060,6 +2089,7 @@ function loadK7() {
         : "";
 
       result.innerHTML =
+        '<div class="card" style="margin-top:0;">' +
         '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.6rem;">' +
         "<p style='margin:0;'><strong>No. TUG:</strong> " +
         escapeHtml(data.tug_number || "-") +
@@ -2113,7 +2143,14 @@ function loadK7() {
           "k7.php",
           "k7_id",
           "update_k7_signers",
-        );
+          [
+            { field: "diterima_tgl", prefix: "Diterima di" },
+            { field: "malang_tanggal", prefix: "Malang," },
+          ]
+        ) +
+        '</div>';
+
+      if (actions) actions.style.display = "flex";
     })
     .catch(function () {
       result.innerHTML = '<p class="text-small">Gagal memuat data K7.</p>';
@@ -2247,7 +2284,7 @@ function buildTtdBox(
       .map(function (p) {
         var val = data[p.field] || "";
         var input = "";
-        if (!isReadOnly && (p.field === "diterima_tgl" || p.field === "malang_tanggal")) {
+        if (!isReadOnly && p.field === "malang_tanggal") {
           if (!val) {
             val = new Date().toLocaleDateString('en-CA'); // 'YYYY-MM-DD'
           }
@@ -2256,14 +2293,24 @@ function buildTtdBox(
             '" value="' +
             escapeHtml(val) +
             '">';
+        } else if (!isReadOnly && p.field === "diterima_tgl") {
+          input = '<input type="text" class="ttd-preline-input" name="' +
+            p.field +
+            '" value="' +
+            escapeHtml(val) +
+            '" placeholder="....................">';
         } else {
+          var displayVal = val;
+          if (p.field === "malang_tanggal" && val) {
+            displayVal = formatDate(val);
+          }
           input = !isReadOnly
             ? '<input type="text" class="ttd-preline-input" name="' +
               p.field +
               '" value="' +
               escapeHtml(val) +
               '" placeholder="....................">'
-            : "<span>" + escapeHtml(val ? formatDate(val) : "....................") + "</span>";
+            : "<span>" + escapeHtml(displayVal || "....................") + "</span>";
         }
         return "<span>" + escapeHtml(p.prefix) + " " + input + "</span>";
       })
@@ -2297,7 +2344,7 @@ function buildTtdBox(
     "</div>" +
     '<div class="ttd-save-btn"><button type="submit" name="' +
     submitName +
-    '" class="btn-info">Simpan Nama Penandatangan</button></div>' +
+    '" class="btn-info">Simpan Perubahan</button></div>' +
     "</form>"
   );
 }
@@ -2778,15 +2825,15 @@ function renderIncomingPage() {
       "</tr>";
   }).join("");
   
-  var tableHtml = '<div class="table-wrap"><table><thead><tr>' +
-    '<th style="width: 5%;">No</th>' +
-    '<th>Nama Material</th>' +
-    '<th>No. Normalisasi</th>' +
-    '<th>Satuan</th>' +
-    '<th>Jumlah</th>' +
-    '<th>Nama Pabrikan</th>' +
-    '<th>Nomor Kontrak</th>' +
-    '<th>Tanggal Datang</th>' +
+  var tableHtml = '<div class="table-wrap"><table class="fixed-table"><thead><tr>' +
+    '<th style="width: 4%;">No</th>' +
+    '<th style="width: 25%;">Nama Material</th>' +
+    '<th style="width: 12%;">No. Normalisasi</th>' +
+    '<th style="width: 7%;">Satuan</th>' +
+    '<th style="width: 7%;">Jumlah</th>' +
+    '<th style="width: 18%;">Nama Pabrikan</th>' +
+    '<th style="width: 15%;">Nomor Kontrak</th>' +
+    '<th style="width: 12%;">Tanggal Datang</th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table></div>';
     
   var paginationHtml = buildIncomingPaginationHtml(incomingCurrentPage, totalPages);
@@ -2929,17 +2976,17 @@ function renderOutgoingPage() {
       "</tr>";
   }).join("");
   
-  var tableHtml = '<div class="table-wrap"><table><thead><tr>' +
-    '<th style="width: 5%;">No</th>' +
-    '<th>Nama Material</th>' +
-    '<th>No. Normalisasi</th>' +
-    '<th>Satuan</th>' +
-    '<th>Jumlah</th>' +
-    '<th>Nama Vendor</th>' +
-    '<th>Nomor DPB / TUG</th>' +
-    '<th>Nomor Surat Jalan</th>' +
-    '<th>Serial Number (SN)</th>' +
-    '<th>Tanggal Keluar</th>' +
+  var tableHtml = '<div class="table-wrap"><table class="fixed-table"><thead><tr>' +
+    '<th style="width: 4%;">No</th>' +
+    '<th style="width: 20%;">Nama Material</th>' +
+    '<th style="width: 10%;">No. Normalisasi</th>' +
+    '<th style="width: 6%;">Satuan</th>' +
+    '<th style="width: 6%;">Jumlah</th>' +
+    '<th style="width: 15%;">Nama Vendor</th>' +
+    '<th style="width: 12%;">Nomor DPB / TUG</th>' +
+    '<th style="width: 12%;">Nomor Surat Jalan</th>' +
+    '<th style="width: 8%;">Serial Number (SN)</th>' +
+    '<th style="width: 7%;">Tanggal Keluar</th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table></div>';
     
   var paginationHtml = buildOutgoingPaginationHtml(outgoingCurrentPage, totalPages);

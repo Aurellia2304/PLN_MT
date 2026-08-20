@@ -11,30 +11,30 @@ if (isVendor()) {
 }
 
 $tug = trim($_GET['tug'] ?? '');
-$dpb = $tug !== '' ? getDpbByTug($db, $tug) : null;
+$k7 = $tug !== '' ? getK7ByTug($db, $tug) : null;
 
-if (!$dpb) {
-    die('Data DPB dengan nomor TUG tersebut tidak ditemukan. <a href="index.php?page=dpb">Kembali</a>');
+if (!$k7) {
+    die('Data K7 dengan nomor TUG tersebut tidak ditemukan. <a href="index.php?page=k7">Kembali</a>');
 }
-if (isVendor() && (int)$dpb['vendor_id'] !== (int)currentVendorId()) {
-    die('Anda tidak memiliki akses untuk mencetak DPB ini.');
+if (isVendor() && (int)$k7['vendor_id'] !== (int)currentVendorId()) {
+    die('Anda tidak memiliki akses untuk mencetak data K7 ini.');
 }
 
-if (empty($dpb['surat_jalan_number'])) {
-    $sjNumber = generateNextSuratJalanNumber($db, $dpb['tanggal_diminta'] ?: date('Y-m-d'));
-    $stmt = $db->prepare("UPDATE dpb_transactions SET surat_jalan_number = ? WHERE id = ?");
-    $stmt->execute([$sjNumber, $dpb['id']]);
-    $dpb['surat_jalan_number'] = $sjNumber;
+if (empty($k7['surat_jalan_number'])) {
+    $sjNumber = generateNextK7SuratJalanNumber($db, $k7['tanggal_diminta'] ?: date('Y-m-d'));
+    $stmt = $db->prepare("UPDATE k7_transactions SET surat_jalan_number = ? WHERE id = ?");
+    $stmt->execute([$sjNumber, $k7['id']]);
+    $k7['surat_jalan_number'] = $sjNumber;
 }
-$noSurat = $dpb['surat_jalan_number'];
+$noSurat = $k7['surat_jalan_number'];
 
-$items = $dpb['items'] ?: [];
+$items = $k7['items'] ?: [];
 ?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
 <meta charset="UTF-8">
-<title>Surat Angkutan - <?= htmlspecialchars($dpb['surat_jalan_number'] ?: $dpb['tug_number']) ?></title>
+<title>Surat Angkutan K7 - <?= htmlspecialchars($k7['surat_jalan_number'] ?: $k7['tug_number']) ?></title>
 <style>
   * { box-sizing:border-box; }
   @page { size: A4 portrait; margin: 5mm; }
@@ -115,8 +115,7 @@ $items = $dpb['items'] ?: [];
 <body>
 
 <div class="toolbar">
-  <?php $backPage = ($dpb['is_manual_sj'] ?? false) ? 'surat_jalan' : 'dpb'; ?>
-  <a href="index.php?page=<?= $backPage ?>&tug=<?= urlencode($dpb['tug_number']) ?>" class="btn-back">&larr; Kembali</a>
+  <a href="index.php?page=k7&tug=<?= urlencode($k7['tug_number']) ?>" class="btn-back">&larr; Kembali</a>
   <button class="btn-print" onclick="window.print()">Cetak / Simpan PDF</button>
 </div>
 
@@ -151,7 +150,7 @@ foreach ($chunks as $pageIndex => $pageItems):
     </div>
 
     <div class="title-block">
-      <h1>SURAT ANGKUTAN</h1>
+      <h1>SURAT ANGKUTAN (K7)</h1>
       <div class="no-surat"><?= htmlspecialchars($noSurat) ?></div>
     </div>
 
@@ -161,12 +160,12 @@ foreach ($chunks as $pageIndex => $pageItems):
           <div class="info-line"><span class="info-label">Kendaraan No.</span><span class="info-colon">:</span><span class="info-value"><span class="dotted">&nbsp;</span></span></div>
           <div class="info-line"><span class="info-label">Nama Pengemudi</span><span class="info-colon">:</span><span class="info-value"><span class="dotted">&nbsp;</span></span></div>
           <div class="info-line"><span class="info-label">Dari Logistik</span><span class="info-colon">:</span><span class="info-value">UP3 MALANG</span></div>
-          <div class="info-line"><span class="info-label">SPK NO.</span><span class="info-colon">:</span><span class="info-value underline-val"><?= htmlspecialchars($dpb['spk_number'] ?: '-') ?></span></div>
+          <div class="info-line"><span class="info-label">SPK NO.</span><span class="info-colon">:</span><span class="info-value underline-val"><?= htmlspecialchars($k7['spk_number'] ?: '-') ?></span></div>
         </td>
         <td style="width:45%;" class="bold-right">
-          <?= htmlspecialchars($dpb['vendor_name'] ?: '-') ?><br><br>
-          <?= htmlspecialchars($dpb['ulp'] ?: '-') ?><br><br>
-          <?= htmlspecialchars($dpb['customer_name'] ?: '-') ?>
+          <?= htmlspecialchars($k7['vendor_name'] ?: '-') ?><br><br>
+          <?= htmlspecialchars($k7['ulp'] ?: '-') ?><br><br>
+          <?= htmlspecialchars($k7['customer_name'] ?: '-') ?>
         </td>
       </tr>
     </table>
@@ -205,16 +204,16 @@ foreach ($chunks as $pageIndex => $pageItems):
   <table class="bottom-frame">
     <tr>
       <td style="width:70%;">
-        <div class="bottom-line"><span class="info-label">VENDOR</span><span class="info-colon">:</span><span class="info-value"><?= htmlspecialchars($dpb['vendor_name'] ?: '-') ?></span></div>
-        <div class="bottom-line"><span class="info-label">NO. SPK</span><span class="info-colon">:</span><span class="info-value underline-val"><?= htmlspecialchars($dpb['spk_number'] ?: '-') ?></span></div>
+        <div class="bottom-line"><span class="info-label">VENDOR</span><span class="info-colon">:</span><span class="info-value"><?= htmlspecialchars($k7['vendor_name'] ?: '-') ?></span></div>
+        <div class="bottom-line"><span class="info-label">NO. SPK</span><span class="info-colon">:</span><span class="info-value underline-val"><?= htmlspecialchars($k7['spk_number'] ?: '-') ?></span></div>
         <div style="height:8px;"></div>
-        <div class="bottom-line"><span class="info-label">JENIS PEKERJAAN</span><span class="info-colon">:</span><span class="info-value"><?= htmlspecialchars($dpb['jenis_pekerjaan'] ?: '-') ?></span></div>
-        <div class="bottom-line"><span class="info-label">IDPEL</span><span class="info-colon">:</span><span class="info-value"><?= htmlspecialchars($dpb['idpel'] ?: '-') ?></span></div>
-        <div class="bottom-line"><span class="info-label">NAMA PELANGGAN</span><span class="info-colon">:</span><span class="info-value"><?= htmlspecialchars($dpb['customer_name'] ?: '-') ?></span></div>
-        <div class="bottom-line"><span class="info-label">ALAMAT PELANGGAN</span><span class="info-colon">:</span><span class="info-value"><?= htmlspecialchars($dpb['customer_address'] ?: '-') ?></span></div>
+        <div class="bottom-line"><span class="info-label">JENIS PEKERJAAN</span><span class="info-colon">:</span><span class="info-value"><?= htmlspecialchars($k7['jenis_pekerjaan'] ?: '-') ?></span></div>
+        <div class="bottom-line"><span class="info-label">IDPEL</span><span class="info-colon">:</span><span class="info-value"><?= htmlspecialchars($k7['idpel'] ?: '-') ?></span></div>
+        <div class="bottom-line"><span class="info-label">NAMA PELANGGAN</span><span class="info-colon">:</span><span class="info-value"><?= htmlspecialchars($k7['customer_name'] ?: '-') ?></span></div>
+        <div class="bottom-line"><span class="info-label">ALAMAT PELANGGAN</span><span class="info-colon">:</span><span class="info-value"><?= htmlspecialchars($k7['customer_address'] ?: '-') ?></span></div>
       </td>
       <td class="tug-box" style="width:30%;">
-        <div class="tug-number"><?= htmlspecialchars($dpb['tug_number']) ?></div>
+        <div class="tug-number"><?= htmlspecialchars($k7['tug_number']) ?></div>
       </td>
     </tr>
   </table>
@@ -222,16 +221,16 @@ foreach ($chunks as $pageIndex => $pageItems):
   <table class="daya-frame">
     <tr>
       <td style="width:70%;">
-        <div class="bottom-line"><span class="info-label">DAYA</span><span class="info-colon">:</span><span class="info-value"><?= htmlspecialchars($dpb['daya'] ?: '-') ?></span></div>
-        <div class="bottom-line"><span class="info-label">ULP</span><span class="info-colon">:</span><span class="info-value"><?= htmlspecialchars($dpb['ulp'] ?: '-') ?></span></div>
+        <div class="bottom-line"><span class="info-label">DAYA</span><span class="info-colon">:</span><span class="info-value"><?= htmlspecialchars($k7['daya'] ?: '-') ?></span></div>
+        <div class="bottom-line"><span class="info-label">ULP</span><span class="info-colon">:</span><span class="info-value"><?= htmlspecialchars($k7['ulp'] ?: '-') ?></span></div>
       </td>
       <td style="width:30%;">&nbsp;</td>
     </tr>
   </table>
 
   <div class="receive-row">
-    <div>Diterima di: <?= htmlspecialchars($dpb['diterima_tgl'] ?: '.......................') ?></div>
-    <div>Malang, <?= $dpb['malang_tanggal'] ? htmlspecialchars(date('d-m-Y', strtotime($dpb['malang_tanggal']))) : '.......................' ?></div>
+    <div>Diterima di: <?= htmlspecialchars($k7['diterima_tgl'] ?: '.......................') ?></div>
+    <div>Malang, <?= $k7['malang_tanggal'] ? htmlspecialchars(date('d-m-Y', strtotime($k7['malang_tanggal']))) : '.......................' ?></div>
   </div>
 
   <div class="mengetahui">Mengetahui,</div>
@@ -239,15 +238,15 @@ foreach ($chunks as $pageIndex => $pageItems):
   <div class="sign-grid">
     <div class="sign-col">
       <p class="sign-role">Penerima :</p>
-      <div class="sign-name"><?= htmlspecialchars($dpb['penerima_name'] ?: '') ?>&nbsp;</div>
+      <div class="sign-name"><?= htmlspecialchars($k7['penerima_name'] ?: '') ?>&nbsp;</div>
     </div>
     <div class="sign-col">
       <p class="sign-role">Security :</p>
-      <div class="sign-name"><?= htmlspecialchars($dpb['security_name'] ?: '') ?>&nbsp;</div>
+      <div class="sign-name">&nbsp;</div>
     </div>
     <div class="sign-col">
       <p class="sign-role">Yang Menyerahkan :</p>
-      <div class="sign-name"><?= htmlspecialchars($dpb['menyerahkan_name'] ?: '') ?>&nbsp;</div>
+      <div class="sign-name"><?= htmlspecialchars($k7['kepala_gudang_name'] ?: '') ?>&nbsp;</div>
     </div>
   </div>
 

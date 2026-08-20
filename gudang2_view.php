@@ -175,7 +175,8 @@ if (isset($_POST['update_g2_k3'])) {
     $stmt = $db->prepare("UPDATE k3_transactions SET
         spk_number = ?, jenis_pekerjaan = ?, idpel = ?, customer_name = ?, customer_address = ?,
         kondisi_material = ?, gudang_pengembalian = ?, keterangan = ?, tanggal_diminta = ?,
-        setuju_name = ?, kepala_gudang_name = ?, pemeriksa_pengawas_name = ?, yang_menyerahkan_name = ?
+        setuju_name = ?, kepala_gudang_name = ?, pemeriksa_pengawas_name = ?, yang_menyerahkan_name = ?,
+        diterima_tgl = ?, malang_tanggal = ?
         WHERE id = ?");
     $stmt->execute([
         trim($_POST['spk_number'] ?? ''),
@@ -191,6 +192,8 @@ if (isset($_POST['update_g2_k3'])) {
         trim($_POST['kepala_gudang_name'] ?? ''),
         trim($_POST['pemeriksa_pengawas_name'] ?? ''),
         trim($_POST['yang_menyerahkan_name'] ?? ''),
+        trim($_POST['diterima_tgl'] ?? ''),
+        trim($_POST['malang_tanggal'] ?? ''),
         $k3Id
     ]);
 
@@ -229,7 +232,8 @@ if (isset($_POST['update_g2_k7'])) {
     $stmt = $db->prepare("UPDATE k7_transactions SET
         spk_number = ?, jenis_pekerjaan = ?, idpel = ?, customer_name = ?, customer_address = ?,
         daya = ?, ulp = ?, tanggal_diminta = ?,
-        setuju_name = ?, kepala_gudang_name = ?, pemeriksa_pengawas_name = ?, penerima_name = ?
+        setuju_name = ?, kepala_gudang_name = ?, pemeriksa_pengawas_name = ?, penerima_name = ?,
+        diterima_tgl = ?, malang_tanggal = ?
         WHERE id = ?");
     $stmt->execute([
         trim($_POST['spk_number'] ?? ''),
@@ -244,6 +248,8 @@ if (isset($_POST['update_g2_k7'])) {
         trim($_POST['kepala_gudang_name'] ?? ''),
         trim($_POST['pemeriksa_pengawas_name'] ?? ''),
         trim($_POST['penerima_name'] ?? ''),
+        trim($_POST['diterima_tgl'] ?? ''),
+        trim($_POST['malang_tanggal'] ?? ''),
         $k7Id
     ]);
 
@@ -735,8 +741,12 @@ $vendors = getVendors($db);
                         <div class="g2-field"><label>ULP</label><input type="text" name="ulp" value="<?= htmlspecialchars($d['ulp'] ?? '') ?>" <?= $disabledAttr ?>></div>
                         <div class="g2-field"><label>Tanggal Diminta</label><input type="date" name="tanggal_diminta" value="<?= htmlspecialchars($d['tanggal_diminta'] ?? '') ?>" <?= $disabledAttr ?>></div>
                         <div class="g2-field">
-                            <label>Diterima Tanggal</label>
-                            <input type="date" name="diterima_tgl" value="<?= htmlspecialchars($d['diterima_tgl'] ?? date('Y-m-d')) ?>" <?= $disabledAttr ?>>
+                            <label>Diterima di</label>
+                            <input type="text" name="diterima_tgl" value="<?= htmlspecialchars($d['diterima_tgl'] ?? '') ?>" <?= $disabledAttr ?> placeholder="....................">
+                        </div>
+                        <div class="g2-field">
+                            <label>Malang, Tanggal</label>
+                            <input type="date" name="malang_tanggal" value="<?= htmlspecialchars($d['malang_tanggal'] ?? '') ?>" <?= $disabledAttr ?>>
                         </div>
                     </div>
 
@@ -822,6 +832,14 @@ $vendors = getVendors($db);
                                 <?php endforeach; ?>
                             </select>
                         </div>
+                        <div class="g2-field">
+                            <label>Diterima di</label>
+                            <input type="text" name="diterima_tgl" value="<?= htmlspecialchars($k['diterima_tgl'] ?? '') ?>" <?= $disabledAttr ?> placeholder="....................">
+                        </div>
+                        <div class="g2-field">
+                            <label>Malang, Tanggal</label>
+                            <input type="date" name="malang_tanggal" value="<?= htmlspecialchars($k['malang_tanggal'] ?? '') ?>" <?= $disabledAttr ?>>
+                        </div>
                         <div class="g2-field" style="grid-column: 1 / -1;"><label>Keterangan</label><textarea name="keterangan" <?= $disabledAttr ?>><?= htmlspecialchars($k['keterangan'] ?? '') ?></textarea></div>
                     </div>
 
@@ -862,8 +880,9 @@ $vendors = getVendors($db);
                     <?php endif; ?>
                 </form>
 
-                <div class="g2-print-row">
-                    <a href="printK3.php?tug=<?= urlencode($k['tug_number']) ?>" target="_blank" class="g2-print-btn"><i class="fas fa-print"></i> Cetak K3</a>
+                <div class="g2-print-row" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <a href="printK3SJ.php?tug=<?= urlencode($k['tug_number']) ?>" target="_blank" class="g2-print-btn"><i class="fas fa-save"></i> Simpan Surat Jalan</a>
+                    <a href="printK3.php?tug=<?= urlencode($k['tug_number']) ?>" target="_blank" class="g2-print-btn" style="background: #14828a; color: #fff;"><i class="fas fa-save"></i> Simpan Surat TUG</a>
                 </div>
             </div>
 
@@ -888,6 +907,14 @@ $vendors = getVendors($db);
                         <div class="g2-field"><label>Daya</label><input type="text" name="daya" value="<?= htmlspecialchars($k['daya'] ?? '') ?>" <?= $disabledAttr ?>></div>
                         <div class="g2-field"><label>ULP</label><input type="text" name="ulp" value="<?= htmlspecialchars($k['ulp'] ?? '') ?>" <?= $disabledAttr ?>></div>
                         <div class="g2-field"><label>Tanggal Diminta</label><input type="date" name="tanggal_diminta" value="<?= htmlspecialchars($k['tanggal_diminta'] ?? '') ?>" <?= $disabledAttr ?>></div>
+                        <div class="g2-field">
+                            <label>Diterima di</label>
+                            <input type="text" name="diterima_tgl" value="<?= htmlspecialchars($k['diterima_tgl'] ?? '') ?>" <?= $disabledAttr ?> placeholder="....................">
+                        </div>
+                        <div class="g2-field">
+                            <label>Malang, Tanggal</label>
+                            <input type="date" name="malang_tanggal" value="<?= htmlspecialchars($k['malang_tanggal'] ?? '') ?>" <?= $disabledAttr ?>>
+                        </div>
                     </div>
 
                     <div class="g2-table-wrap">
@@ -927,8 +954,9 @@ $vendors = getVendors($db);
                     <?php endif; ?>
                 </form>
 
-                <div class="g2-print-row">
-                    <a href="printK7.php?tug=<?= urlencode($k['tug_number']) ?>" target="_blank" class="g2-print-btn"><i class="fas fa-print"></i> Cetak K7</a>
+                <div class="g2-print-row" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <a href="printK7SJ.php?tug=<?= urlencode($k['tug_number']) ?>" target="_blank" class="g2-print-btn"><i class="fas fa-save"></i> Simpan Surat Jalan</a>
+                    <a href="printK7.php?tug=<?= urlencode($k['tug_number']) ?>" target="_blank" class="g2-print-btn" style="background: #14828a; color: #fff;"><i class="fas fa-save"></i> Simpan Surat TUG</a>
                 </div>
             </div>
 

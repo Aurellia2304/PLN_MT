@@ -37,8 +37,7 @@ function terbilangID($n) {
 }
 
 $d = $k3['tanggal_diminta'] ? strtotime($k3['tanggal_diminta']) : time();
-$items = $k3['items'];
-while (count($items) < 10) { $items[] = null; }
+$items = $k3['items'] ?: [];
 
 // "TUG 10" (besar kiri) diambil dari kata pertama nomor TUG
 $tugParts = explode('.', $k3['tug_number'], 2);
@@ -72,7 +71,9 @@ $kondisiList = [
   .btn-print { background:#ffd966; color:#082038; }
   .btn-back { background:#eee; color:#333; }
 
-  .sheet { background:#fff; max-width:1080px; margin:0 auto; border:1px solid #333; }
+  .sheet { background:#fff; max-width:1080px; margin:0 auto 20px; border:1px solid #333; padding: 12px; }
+  .page-break { page-break-after: always; break-after: page; }
+
   table.frame { width:100%; border-collapse:collapse; }
   table.frame td { border:1px solid #333; padding:4px 8px; vertical-align:top; }
 
@@ -114,8 +115,10 @@ $kondisiList = [
   @media print {
     body { background:#fff; padding:0; }
     .toolbar { display:none; }
-    .sheet { border:none; }
+    .sheet { border:none; max-width:100%; box-shadow:none; margin:0 auto; page-break-after:always; break-after:page; }
+    .sheet:last-of-type { page-break-after: avoid; break-after: avoid; }
     .header-section { border: 1px solid #ffe58f; }
+    .page-break { page-break-after: always; break-after: page; }
   }
 </style>
 </head>
@@ -126,6 +129,18 @@ $kondisiList = [
   <button class="btn-print" onclick="window.print()">Cetak / Simpan PDF</button>
 </div>
 
+<?php
+$chunks = array_chunk($items, 10);
+$totalPageCount = count($chunks);
+if ($totalPageCount === 0) {
+    $chunks = [[null]];
+    $totalPageCount = 1;
+}
+foreach ($chunks as $pageIndex => $pageItems):
+    while (count($pageItems) < 10) {
+        $pageItems[] = null;
+    }
+?>
 <div class="sheet">
 
   <div class="header-section">
@@ -180,43 +195,48 @@ $kondisiList = [
   </div>
 
   <table class="items">
-    <tr>
-      <th rowspan="2" style="width:4%;">No.<br>Urut</th>
-      <th rowspan="2" style="width:26%;">Nama Barang<br>(ditulis selengkap - lengkapnya)</th>
-      <th rowspan="2" style="width:9%;">No.<br>Normalisasi</th>
-      <th rowspan="2" style="width:5%;">Sa-<br>tuan</th>
-      <th colspan="2" style="width:16%;">Banyaknya Dikembalikan</th>
-      <th colspan="2" style="width:16%;">Banyaknya Diterima</th>
-      <th rowspan="2" style="width:6%;">Kode</th>
-      <th rowspan="2" style="width:9%;">Harga<br>Satuan</th>
-      <th rowspan="2" style="width:13%;">Jumlah Uang<br>Rp.</th>
-    </tr>
-    <tr>
-      <th style="width:7%;">dengan angka</th>
-      <th style="width:9%;">dengan huruf</th>
-      <th style="width:7%;">dengan angka</th>
-      <th style="width:9%;">dengan huruf</th>
-    </tr>
-    <?php foreach ($items as $i => $it):
-        $qr = $it ? (int)($it['quantity_returned'] ?? 0) : null;
-        $qd = $it ? (int)($it['quantity_received'] ?? 0) : null;
-        $harga = $it ? (float)($it['harga_satuan'] ?? 0) : 0;
-        $jumlah = $it ? ($qd ?: $qr) * $harga : 0;
-    ?>
-    <tr>
-      <td><?= $i + 1 ?></td>
-      <td class="left"><?= $it ? htmlspecialchars($it['material_name'] ?? '') : '' ?></td>
-      <td><?= $it ? htmlspecialchars($it['norm'] ?? '') : '' ?></td>
-      <td><?= $it ? htmlspecialchars($it['unit'] ?? '') : '' ?></td>
-      <td><?= $it !== null ? $qr : '' ?></td>
-      <td class="left"><?= $it !== null ? terbilangID($qr) : '' ?></td>
-      <td><?= $it !== null ? $qd : '' ?></td>
-      <td class="left"><?= $it !== null ? terbilangID($qd) : '' ?></td>
-      <td><?= $it ? htmlspecialchars($it['kode'] ?? '') : '' ?></td>
-      <td><?= $it && $harga > 0 ? number_format($harga, 0, ',', '.') : '' ?></td>
-      <td><?= $it && $jumlah > 0 ? number_format($jumlah, 0, ',', '.') : '' ?></td>
-    </tr>
-    <?php endforeach; ?>
+    <thead>
+      <tr>
+        <th rowspan="2" style="width:4%;">No.<br>Urut</th>
+        <th rowspan="2" style="width:26%;">Nama Barang<br>(ditulis selengkap - lengkapnya)</th>
+        <th rowspan="2" style="width:9%;">No.<br>Normalisasi</th>
+        <th rowspan="2" style="width:5%;">Sa-<br>tuan</th>
+        <th colspan="2" style="width:16%;">Banyaknya Dikembalikan</th>
+        <th colspan="2" style="width:16%;">Banyaknya Diterima</th>
+        <th rowspan="2" style="width:6%;">Kode</th>
+        <th rowspan="2" style="width:9%;">Harga<br>Satuan</th>
+        <th rowspan="2" style="width:13%;">Jumlah Uang<br>Rp.</th>
+      </tr>
+      <tr>
+        <th style="width:7%;">dengan angka</th>
+        <th style="width:9%;">dengan huruf</th>
+        <th style="width:7%;">dengan angka</th>
+        <th style="width:9%;">dengan huruf</th>
+      </tr>
+    </thead>
+    <tbody>
+      <?php foreach ($pageItems as $i => $it):
+          $itemNum = ($pageIndex * 10) + $i + 1;
+          $qr = $it ? (int)($it['quantity_returned'] ?? 0) : null;
+          $qd = $it ? (int)($it['quantity_received'] ?? 0) : null;
+          $harga = $it ? (float)($it['harga_satuan'] ?? 0) : 0;
+          $jumlah = $it ? ($qd ?: $qr) * $harga : 0;
+      ?>
+      <tr>
+        <td><?= $itemNum ?></td>
+        <td class="left"><?= $it ? htmlspecialchars($it['material_name'] ?? '') : '' ?></td>
+        <td><?= $it ? htmlspecialchars($it['norm'] ?? '') : '' ?></td>
+        <td><?= $it ? htmlspecialchars($it['unit'] ?? '') : '' ?></td>
+        <td><?= $it !== null ? $qr : '' ?></td>
+        <td class="left"><?= $it !== null ? terbilangID($qr) : '' ?></td>
+        <td><?= $it !== null ? $qd : '' ?></td>
+        <td class="left"><?= $it !== null ? terbilangID($qd) : '' ?></td>
+        <td><?= $it ? htmlspecialchars($it['kode'] ?? '') : '' ?></td>
+        <td><?= $it && $harga > 0 ? number_format($harga, 0, ',', '.') : '' ?></td>
+        <td><?= $it && $jumlah > 0 ? number_format($jumlah, 0, ',', '.') : '' ?></td>
+      </tr>
+      <?php endforeach; ?>
+    </tbody>
   </table>
 
   <table class="frame">
@@ -273,6 +293,11 @@ $kondisiList = [
     </tr>
   </table>
 
+  <div class="receive-row" style="display:flex; justify-content:space-between; margin:8px 0 4px; font-size:10.5px; padding:0 10px;">
+    <div>Diterima di: <?= htmlspecialchars($k3['diterima_tgl'] ?: '.......................') ?></div>
+    <div>Malang, <?= $k3['malang_tanggal'] ? htmlspecialchars(date('d-m-Y', strtotime($k3['malang_tanggal']))) : '.......................' ?></div>
+  </div>
+
   <table class="frame" style="margin-top:-1px;">
     <tr class="sign-row">
       <td style="width:25%;">
@@ -295,7 +320,16 @@ $kondisiList = [
     </tr>
   </table>
 
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 9px; color: #666; padding: 0 10px;">
+    <span>* TUG (Tata Usaha Gudang)</span>
+    <span>Halaman <?= ($pageIndex + 1) ?> dari <?= $totalPageCount ?></span>
+  </div>
+
 </div>
+<?php if ($pageIndex < $totalPageCount - 1): ?>
+<div class="page-break"></div>
+<?php endif; ?>
+<?php endforeach; ?>
 
 </body>
 </html>

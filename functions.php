@@ -167,6 +167,70 @@ function generateNextSuratJalanNumber($db, $tanggal) {
     return sprintf('%04d', $nextSeq) . "/LOG.08.03/GD. ARIES/" . $bulanRomawi . "/" . $tahun;
 }
 
+function generateNextK3SuratJalanNumber($db, $tanggal) {
+    $d = strtotime($tanggal);
+    $ROMAWI_BULAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
+    $bulanRomawi = $ROMAWI_BULAN[(int)date('n', $d) - 1];
+    $tahun = date('Y', $d);
+    
+    $stmt = $db->prepare("
+        SELECT surat_jalan_number 
+        FROM k3_transactions 
+        WHERE surat_jalan_number LIKE '%/K3/LOG.08.03/GD. ARIES/%'
+    ");
+    $stmt->execute();
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    $maxSeq = -1;
+    foreach ($rows as $row) {
+        $num = $row['surat_jalan_number'];
+        if ($num) {
+            $parts = explode('/', $num);
+            if (count($parts) > 0) {
+                $seq = (int)$parts[0];
+                if ($seq > $maxSeq) {
+                    $maxSeq = $seq;
+                }
+            }
+        }
+    }
+    
+    $nextSeq = $maxSeq + 1;
+    return sprintf('%04d', $nextSeq) . "/K3/LOG.08.03/GD. ARIES/" . $bulanRomawi . "/" . $tahun;
+}
+
+function generateNextK7SuratJalanNumber($db, $tanggal) {
+    $d = strtotime($tanggal);
+    $ROMAWI_BULAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
+    $bulanRomawi = $ROMAWI_BULAN[(int)date('n', $d) - 1];
+    $tahun = date('Y', $d);
+    
+    $stmt = $db->prepare("
+        SELECT surat_jalan_number 
+        FROM k7_transactions 
+        WHERE surat_jalan_number LIKE '%/K7/LOG.08.03/GD. ARIES/%'
+    ");
+    $stmt->execute();
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    $maxSeq = -1;
+    foreach ($rows as $row) {
+        $num = $row['surat_jalan_number'];
+        if ($num) {
+            $parts = explode('/', $num);
+            if (count($parts) > 0) {
+                $seq = (int)$parts[0];
+                if ($seq > $maxSeq) {
+                    $maxSeq = $seq;
+                }
+            }
+        }
+    }
+    
+    $nextSeq = $maxSeq + 1;
+    return sprintf('%04d', $nextSeq) . "/K7/LOG.08.03/GD. ARIES/" . $bulanRomawi . "/" . $tahun;
+}
+
 // ---------- DPB ----------
 // Ambil 1 transaksi DPB lengkap berdasarkan nomor TUG (pencarian otomatis)
 function getDpbByTug($db, $tug) {

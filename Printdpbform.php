@@ -34,8 +34,7 @@ function terbilangID($n) {
 }
 
 $d = $dpb['tanggal_diminta'] ? strtotime($dpb['tanggal_diminta']) : time();
-$items = $dpb['items'];
-while (count($items) < 10) { $items[] = null; }
+$items = $dpb['items'] ?: [];
 
 // "TUG 5" (besar kiri) diambil dari kata pertama nomor TUG
 $tugParts = explode('.', $dpb['tug_number'], 2);
@@ -62,7 +61,9 @@ $tugBig = $tugParts[0] ?? 'TUG';
   .btn-print { background:#ffd966; color:#082038; }
   .btn-back { background:#eee; color:#333; }
 
-  .sheet { background:#fff; max-width:1080px; margin:0 auto; border:1px solid #333; }
+  .sheet { background:#fff; max-width:1080px; margin:0 auto 20px; border:1px solid #333; padding: 12px; }
+  .page-break { page-break-after: always; break-after: page; }
+
   table.frame { width:100%; border-collapse:collapse; }
   table.frame td { border:1px solid #333; padding:4px 8px; vertical-align:top; }
 
@@ -94,7 +95,9 @@ $tugBig = $tugParts[0] ?? 'TUG';
   @media print {
     body { background:#fff; padding:0; }
     .toolbar { display:none; }
-    .sheet { border:none; }
+    .sheet { border:none; max-width:100%; box-shadow:none; margin:0 auto; page-break-after:always; break-after:page; }
+    .sheet:last-of-type { page-break-after: avoid; break-after: avoid; }
+    .page-break { page-break-after: always; break-after: page; }
   }
 </style>
 </head>
@@ -105,6 +108,18 @@ $tugBig = $tugParts[0] ?? 'TUG';
   <button class="btn-print" onclick="window.print()">Cetak / Simpan PDF</button>
 </div>
 
+<?php
+$chunks = array_chunk($items, 10);
+$totalPageCount = count($chunks);
+if ($totalPageCount === 0) {
+    $chunks = [[null]];
+    $totalPageCount = 1;
+}
+foreach ($chunks as $pageIndex => $pageItems):
+    while (count($pageItems) < 10) {
+        $pageItems[] = null;
+    }
+?>
 <div class="sheet">
 
   <table class="frame header-section">
@@ -159,37 +174,42 @@ $tugBig = $tugParts[0] ?? 'TUG';
   </table>
 
   <table class="items">
-    <tr>
-      <th rowspan="2" style="width:4%;">No.<br>Urut</th>
-      <th rowspan="2" style="width:26%;">Nama Barang<br>(ditulis selengkap - lengkapnya)</th>
-      <th rowspan="2" style="width:9%;">No.<br>Normalisasi</th>
-      <th rowspan="2" style="width:5%;">Sa-<br>tuan</th>
-      <th colspan="2" style="width:20%;">Banyaknya yang diminta</th>
-      <th colspan="2" style="width:20%;">Banyaknya yang diterima</th>
-      <th rowspan="2" style="width:16%;">Jumlah Uang<br>Rp.</th>
-    </tr>
-    <tr>
-      <th style="width:8%;">dengan angka</th>
-      <th style="width:12%;">dengan huruf</th>
-      <th style="width:8%;">dengan angka</th>
-      <th style="width:12%;">dengan huruf</th>
-    </tr>
-    <?php foreach ($items as $i => $it):
-        $qr = $it ? (int)($it['quantity_requested'] ?? 0) : null;
-        $qd = $it ? (int)($it['quantity_received'] ?? 0) : null;
-    ?>
-    <tr>
-      <td><?= $i + 1 ?></td>
-      <td class="left"><?= $it ? htmlspecialchars($it['material_name'] ?? '') : '' ?></td>
-      <td><?= $it ? htmlspecialchars($it['norm'] ?? '') : '' ?></td>
-      <td><?= $it ? htmlspecialchars($it['unit'] ?? '') : '' ?></td>
-      <td><?= $it !== null ? $qr : '' ?></td>
-      <td class="left"><?= $it !== null ? terbilangID($qr) : '' ?></td>
-      <td><?= $it !== null ? $qd : '' ?></td>
-      <td class="left"><?= $it !== null ? terbilangID($qd) : '' ?></td>
-      <td></td>
-    </tr>
-    <?php endforeach; ?>
+    <thead>
+      <tr>
+        <th rowspan="2" style="width:4%;">No.<br>Urut</th>
+        <th rowspan="2" style="width:26%;">Nama Barang<br>(ditulis selengkap - lengkapnya)</th>
+        <th rowspan="2" style="width:9%;">No.<br>Normalisasi</th>
+        <th rowspan="2" style="width:5%;">Sa-<br>tuan</th>
+        <th colspan="2" style="width:20%;">Banyaknya yang diminta</th>
+        <th colspan="2" style="width:20%;">Banyaknya yang diterima</th>
+        <th rowspan="2" style="width:16%;">Jumlah Uang<br>Rp.</th>
+      </tr>
+      <tr>
+        <th style="width:8%;">dengan angka</th>
+        <th style="width:12%;">dengan huruf</th>
+        <th style="width:8%;">dengan angka</th>
+        <th style="width:12%;">dengan huruf</th>
+      </tr>
+    </thead>
+    <tbody>
+      <?php foreach ($pageItems as $i => $it):
+          $itemNum = ($pageIndex * 10) + $i + 1;
+          $qr = $it ? (int)($it['quantity_requested'] ?? 0) : null;
+          $qd = $it ? (int)($it['quantity_received'] ?? 0) : null;
+      ?>
+      <tr>
+        <td><?= $itemNum ?></td>
+        <td class="left"><?= $it ? htmlspecialchars($it['material_name'] ?? '') : '' ?></td>
+        <td><?= $it ? htmlspecialchars($it['norm'] ?? '') : '' ?></td>
+        <td><?= $it ? htmlspecialchars($it['unit'] ?? '') : '' ?></td>
+        <td><?= $it !== null ? $qr : '' ?></td>
+        <td class="left"><?= $it !== null ? terbilangID($qr) : '' ?></td>
+        <td><?= $it !== null ? $qd : '' ?></td>
+        <td class="left"><?= $it !== null ? terbilangID($qd) : '' ?></td>
+        <td></td>
+      </tr>
+      <?php endforeach; ?>
+    </tbody>
   </table>
 
   <table class="frame">
@@ -244,6 +264,11 @@ $tugBig = $tugParts[0] ?? 'TUG';
     </tr>
   </table>
 
+  <div class="receive-row" style="display:flex; justify-content:space-between; margin:8px 0 4px; font-size:10.5px; padding:0 10px;">
+    <div>Diterima di: <?= htmlspecialchars($dpb['diterima_tgl'] ?: '.......................') ?></div>
+    <div>Malang, <?= $dpb['malang_tanggal'] ? htmlspecialchars(date('d-m-Y', strtotime($dpb['malang_tanggal']))) : '.......................' ?></div>
+  </div>
+
   <table class="frame" style="margin-top:-1px;">
     <tr class="sign-row">
       <td style="width:25%;">
@@ -266,7 +291,16 @@ $tugBig = $tugParts[0] ?? 'TUG';
     </tr>
   </table>
 
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 9px; color: #666; padding: 0 10px;">
+    <span>* TUG (Tata Usaha Gudang)</span>
+    <span>Halaman <?= ($pageIndex + 1) ?> dari <?= $totalPageCount ?></span>
+  </div>
+
 </div>
+<?php if ($pageIndex < $totalPageCount - 1): ?>
+<div class="page-break"></div>
+<?php endif; ?>
+<?php endforeach; ?>
 
 </body>
 </html>

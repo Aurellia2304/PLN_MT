@@ -251,8 +251,11 @@ if (isset($_POST['update_k7_signers'])) {
         exit();
     }
 
-    $stmt = $db->prepare("UPDATE k7_transactions SET setuju_name = ?, kepala_gudang_name = ?, pemeriksa_pengawas_name = ?, penerima_name = ? WHERE id = ?");
-    $stmt->execute([$setuju, $kepalaGudang, $pemeriksaPengawas, $penerima, $id]);
+    $diterimaTgl   = trim($_POST['diterima_tgl'] ?? '');
+    $malangTanggal = trim($_POST['malang_tanggal'] ?? '');
+
+    $stmt = $db->prepare("UPDATE k7_transactions SET setuju_name = ?, kepala_gudang_name = ?, pemeriksa_pengawas_name = ?, penerima_name = ?, diterima_tgl = ?, malang_tanggal = ? WHERE id = ?");
+    $stmt->execute([$setuju, $kepalaGudang, $pemeriksaPengawas, $penerima, $diterimaTgl, $malangTanggal, $id]);
 
     $_SESSION['success'] = "Data tanda tangan berhasil disimpan.";
     header("Location: index.php?page=k7&tug=" . urlencode($tug));

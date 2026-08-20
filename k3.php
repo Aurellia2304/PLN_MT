@@ -263,8 +263,11 @@ if (isset($_POST['update_k3_signers'])) {
         exit();
     }
 
-    $stmt = $db->prepare("UPDATE k3_transactions SET setuju_name = ?, kepala_gudang_name = ?, pemeriksa_pengawas_name = ?, yang_menyerahkan_name = ? WHERE id = ?");
-    $stmt->execute([$setuju, $kepalaGudang, $pemeriksaPengawas, $yangMenyerahkan, $id]);
+    $diterimaTgl   = trim($_POST['diterima_tgl'] ?? '');
+    $malangTanggal = trim($_POST['malang_tanggal'] ?? '');
+
+    $stmt = $db->prepare("UPDATE k3_transactions SET setuju_name = ?, kepala_gudang_name = ?, pemeriksa_pengawas_name = ?, yang_menyerahkan_name = ?, diterima_tgl = ?, malang_tanggal = ? WHERE id = ?");
+    $stmt->execute([$setuju, $kepalaGudang, $pemeriksaPengawas, $yangMenyerahkan, $diterimaTgl, $malangTanggal, $id]);
 
     $_SESSION['success'] = "Data tanda tangan berhasil disimpan.";
     header("Location: index.php?page=k3&tug=" . urlencode($tug));

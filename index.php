@@ -172,6 +172,8 @@ if (isset($_GET['ajax'])) {
             'kepala_gudang_name'      => $k3['kepala_gudang_name'],
             'pemeriksa_pengawas_name' => $k3['pemeriksa_pengawas_name'],
             'yang_menyerahkan_name'   => $k3['yang_menyerahkan_name'],
+            'diterima_tgl'            => $k3['diterima_tgl'] ?? '',
+            'malang_tanggal'          => $k3['malang_tanggal'] ?? '',
             'items'               => $k3['items'],
         ]);
         exit();
@@ -209,6 +211,8 @@ if (isset($_GET['ajax'])) {
             'kepala_gudang_name'      => $k7['kepala_gudang_name'],
             'pemeriksa_pengawas_name' => $k7['pemeriksa_pengawas_name'],
             'penerima_name'           => $k7['penerima_name'],
+            'diterima_tgl'            => $k7['diterima_tgl'] ?? '',
+            'malang_tanggal'          => $k7['malang_tanggal'] ?? '',
             'items'            => $k7['items'],
         ]);
         exit();
@@ -1041,7 +1045,8 @@ if ($page === 'riwayat') {
         // 1. Pengajuan Vendor List
         $stmt = $db->query("
             SELECT * FROM vendor_applications 
-            ORDER BY (CASE WHEN status = 'Menunggu Persetujuan' THEN 0 ELSE 1 END), created_at DESC
+            WHERE status = 'Menunggu Persetujuan'
+            ORDER BY created_at DESC
         ");
         $all_applications = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -2273,7 +2278,7 @@ if ($page === 'riwayat') {
                                                 <td><?= date('d-M-Y', strtotime($row['tanggal_diminta'])) ?></td>
                                                 <td><span class="status-badge <?= $statusClass ?>"><?= htmlspecialchars(dpbStatusLabel($row['status'])) ?></span></td>
                                                 <td style="text-align: center;">
-                                                    <button type="button" class="btn-info" onclick="openGudangDpbDetail('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.5rem 1.2rem; border-radius:30px; font-size:0.85rem; font-weight:600; display: inline-flex; align-items: center; gap: 6px;"><i class="fas <?= $row['status'] === 'selesai' ? 'fa-eye' : 'fa-folder-open' ?>"></i> <?= $row['status'] === 'selesai' ? 'Lihat Detail' : 'Kelola Surat' ?></button>
+                                                    <button type="button" class="btn-info" onclick="openGudangDpbDetail('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.5rem 1.2rem; border-radius:30px; font-size:0.85rem; font-weight:600; display: inline-flex; align-items: center; gap: 6px;"><i class="fas <?= $row['status'] === 'selesai' ? 'fa-eye' : 'fa-folder-open' ?>"></i> Pilih</button>
                                                 </td>
                                             </tr>
                                         <?php endforeach; ?>
@@ -2300,19 +2305,14 @@ if ($page === 'riwayat') {
                             <button class="btn-success" onclick="loadDPB()">Cari / Muat</button>
                         </div>
 
-                        <div id="dpbResult" style="margin-top:1.5rem; background:white; border-radius:24px; padding:1rem;">
-                            <p class="text-small">Masukkan nomor TUG yang sudah pernah diajukan untuk melihat detail &amp; status secara otomatis.</p>
-                        </div>
+                        <div id="dpbResult" style="margin-top:1.5rem;"></div>
 
-                        <div style="margin-top:1rem; display:flex; gap:0.8rem; flex-wrap:wrap;">
+                        <div id="dpbActions" style="margin-top:1rem; display:none; gap:0.8rem; flex-wrap:wrap;">
                             <?php if ($is_admin || $is_gudang2): ?>
-                            <button class="btn-warning" onclick="printDPB()"><i class="fas fa-print"></i> Cetak Surat Jalan</button>
+                            <button class="btn-warning" onclick="printDPB()"><i class="fas fa-save"></i> Simpan Surat Jalan</button>
                             <?php endif; ?>
                             <?php if ($is_admin || $is_vendor): ?>
-                            <button class="btn-warning" onclick="(function(){var t=document.getElementById('tugNumberInput').value.trim(); if(!t){alert('Cari nomor TUG dulu sebelum mencetak.');return;} window.open('printDPBForm.php?tug='+encodeURIComponent(t), '_blank');})()"><i class="fas fa-print"></i> Cetak DPB</button>
-                            <?php endif; ?>
-                            <?php if ($is_admin || $is_gudang2): ?>
-                            <button class="btn-info" onclick="saveDPBpdf()"><i class="fas fa-file-pdf"></i> Simpan PDF</button>
+                            <button class="btn-info" onclick="(function(){var t=document.getElementById('tugNumberInput').value.trim(); if(!t){alert('Cari nomor TUG dulu sebelum mencetak.');return;} window.open('printDPBForm.php?tug='+encodeURIComponent(t), '_blank');})()"><i class="fas fa-save"></i> Simpan Surat TUG</button>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -2379,7 +2379,7 @@ if ($page === 'riwayat') {
                                                 <td><?= date('d-M-Y', strtotime($row['tanggal_diminta'])) ?></td>
                                                 <td><span class="status-badge <?= $statusClass ?>"><?= htmlspecialchars(dpbStatusLabel($row['status'])) ?></span></td>
                                                 <td>
-                                                    <button type="button" class="btn-info" onclick="autofillSearchTug('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.35rem 0.8rem; border-radius:20px; font-size:0.75rem;">Pilih &amp; Muat</button>
+                                                    <button type="button" class="btn-info" onclick="autofillSearchTug('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.35rem 0.8rem; border-radius:20px; font-size:0.75rem;">Pilih</button>
                                                 </td>
                                             </tr>
                                         <?php endforeach; ?>
@@ -2452,7 +2452,7 @@ if ($page === 'riwayat') {
                                                 <td><?= date('d-M-Y', strtotime($row['tanggal_diminta'])) ?></td>
                                                 <td><span class="status-badge status-selesai">Selesai</span></td>
                                                 <td>
-                                                    <button type="button" class="btn-info" onclick="autofillSearchTug('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.35rem 0.8rem; border-radius:20px; font-size:0.75rem;">Pilih &amp; Muat</button>
+                                                    <button type="button" class="btn-info" onclick="autofillSearchTug('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.35rem 0.8rem; border-radius:20px; font-size:0.75rem;">Pilih</button>
                                                 </td>
                                             </tr>
                                         <?php endforeach; ?>
@@ -2666,7 +2666,7 @@ if ($page === 'riwayat') {
                                                 <td><?= date('d-M-Y', strtotime($row['tanggal_diminta'])) ?></td>
                                                 <td><span class="status-badge <?= $statusClass ?>"><?= htmlspecialchars(dpbStatusLabel($row['status'])) ?></span></td>
                                                 <td style="text-align: center;">
-                                                    <button type="button" class="btn-info" onclick="openGudangK3Detail('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.5rem 1.2rem; border-radius:30px; font-size:0.85rem; font-weight:600; display: inline-flex; align-items: center; gap: 6px;"><i class="fas <?= $row['status'] === 'selesai' ? 'fa-eye' : 'fa-folder-open' ?>"></i> <?= $row['status'] === 'selesai' ? 'Lihat Detail' : 'Kelola Surat' ?></button>
+                                                    <button type="button" class="btn-info" onclick="openGudangK3Detail('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.5rem 1.2rem; border-radius:30px; font-size:0.85rem; font-weight:600; display: inline-flex; align-items: center; gap: 6px;"><i class="fas <?= $row['status'] === 'selesai' ? 'fa-eye' : 'fa-folder-open' ?>"></i> Pilih</button>
                                                 </td>
                                             </tr>
                                         <?php endforeach; ?>
@@ -2691,13 +2691,13 @@ if ($page === 'riwayat') {
                             </div>
                             <button class="btn-success" onclick="loadK3()">Cari / Muat</button>
                         </div>
-                        <div id="k3Result" style="margin-top:1.5rem; background:white; border-radius:24px; padding:1rem;">
-                            <p class="text-small">Masukkan nomor TUG K3 yang sudah pernah diajukan untuk melihat detail &amp; status secara otomatis.</p>
-                        </div>
-                        <div style="margin-top:1rem; display:flex; gap:0.8rem; flex-wrap:wrap;">
+                        <div id="k3Result" style="margin-top:1.5rem;"></div>
+                        <div id="k3Actions" style="margin-top:1rem; display:none; gap:0.8rem; flex-wrap:wrap;">
+                            <?php if ($is_admin || $is_gudang2): ?>
+                            <button class="btn-warning" onclick="(function(){var t=document.getElementById('k3TugInput').value.trim(); if(!t){alert('Cari nomor TUG dulu sebelum mencetak.');return;} window.open('printK3SJ.php?tug='+encodeURIComponent(t), '_blank');})()"><i class="fas fa-save"></i> Simpan Surat Jalan</button>
+                            <?php endif; ?>
                             <?php if ($is_admin || $is_vendor): ?>
-                            <button class="btn-warning" onclick="(function(){var t=document.getElementById('k3TugInput').value.trim(); if(!t){alert('Cari nomor TUG dulu sebelum mencetak.');return;} window.open('printK3.php?tug='+encodeURIComponent(t), '_blank');})()"><i class="fas fa-print"></i> Cetak Bon (Format Resmi)</button>
-                            <button class="btn-info" onclick="(function(){var t=document.getElementById('k3TugInput').value.trim(); if(!t){alert('Cari nomor TUG dulu sebelum mencetak.');return;} window.open('printK3.php?tug='+encodeURIComponent(t), '_blank');})()"><i class="fas fa-file-pdf"></i> Simpan PDF</button>
+                            <button class="btn-info" onclick="(function(){var t=document.getElementById('k3TugInput').value.trim(); if(!t){alert('Cari nomor TUG dulu sebelum mencetak.');return;} window.open('printK3.php?tug='+encodeURIComponent(t), '_blank');})()"><i class="fas fa-save"></i> Simpan Surat TUG</button>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -2737,7 +2737,7 @@ if ($page === 'riwayat') {
                                                 <td><?= date('d-M-Y', strtotime($row['tanggal_diminta'])) ?></td>
                                                 <td><span class="status-badge <?= $statusClass ?>"><?= htmlspecialchars(dpbStatusLabel($row['status'])) ?></span></td>
                                                 <td>
-                                                    <button type="button" class="btn-info" onclick="autofillSearchTug('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.35rem 0.8rem; border-radius:20px; font-size:0.75rem;">Pilih &amp; Muat</button>
+                                                    <button type="button" class="btn-info" onclick="autofillSearchTug('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.35rem 0.8rem; border-radius:20px; font-size:0.75rem;">Pilih</button>
                                                 </td>
                                             </tr>
                                         <?php endforeach; ?>
@@ -2811,7 +2811,7 @@ if ($page === 'riwayat') {
                                                 <td><?= date('d-M-Y', strtotime($row['tanggal_diminta'])) ?></td>
                                                 <td><span class="status-badge status-selesai">Selesai</span></td>
                                                 <td>
-                                                    <button type="button" class="btn-info" onclick="autofillSearchTug('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.35rem 0.8rem; border-radius:20px; font-size:0.75rem;">Pilih &amp; Muat</button>
+                                                    <button type="button" class="btn-info" onclick="autofillSearchTug('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.35rem 0.8rem; border-radius:20px; font-size:0.75rem;">Pilih</button>
                                                 </td>
                                             </tr>
                                         <?php endforeach; ?>
@@ -3045,7 +3045,7 @@ if ($page === 'riwayat') {
                                                 <td><?= date('d-M-Y', strtotime($row['tanggal_diminta'])) ?></td>
                                                 <td><span class="status-badge <?= $statusClass ?>"><?= htmlspecialchars(dpbStatusLabel($row['status'])) ?></span></td>
                                                 <td style="text-align: center;">
-                                                    <button type="button" class="btn-info" onclick="openGudangK7Detail('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.5rem 1.2rem; border-radius:30px; font-size:0.85rem; font-weight:600; display: inline-flex; align-items: center; gap: 6px;"><i class="fas <?= $row['status'] === 'selesai' ? 'fa-eye' : 'fa-folder-open' ?>"></i> <?= $row['status'] === 'selesai' ? 'Lihat Detail' : 'Kelola Surat' ?></button>
+                                                    <button type="button" class="btn-info" onclick="openGudangK7Detail('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.5rem 1.2rem; border-radius:30px; font-size:0.85rem; font-weight:600; display: inline-flex; align-items: center; gap: 6px;"><i class="fas <?= $row['status'] === 'selesai' ? 'fa-eye' : 'fa-folder-open' ?>"></i> Pilih</button>
                                                 </td>
                                             </tr>
                                         <?php endforeach; ?>
@@ -3070,13 +3070,13 @@ if ($page === 'riwayat') {
                             </div>
                             <button class="btn-success" onclick="loadK7()">Cari / Muat</button>
                         </div>
-                        <div id="k7Result" style="margin-top:1.5rem; background:white; border-radius:24px; padding:1rem;">
-                            <p class="text-small">Masukkan nomor TUG K7 yang sudah pernah diajukan untuk melihat detail &amp; status secara otomatis.</p>
-                        </div>
-                        <div style="margin-top:1rem; display:flex; gap:0.8rem; flex-wrap:wrap;">
+                        <div id="k7Result" style="margin-top:1.5rem;"></div>
+                        <div id="k7Actions" style="margin-top:1rem; display:none; gap:0.8rem; flex-wrap:wrap;">
+                            <?php if ($is_admin || $is_gudang2): ?>
+                            <button class="btn-warning" onclick="(function(){var t=document.getElementById('k7TugInput').value.trim(); if(!t){alert('Cari nomor TUG dulu sebelum mencetak.');return;} window.open('printK7SJ.php?tug='+encodeURIComponent(t), '_blank');})()"><i class="fas fa-save"></i> Simpan Surat Jalan</button>
+                            <?php endif; ?>
                             <?php if ($is_admin || $is_vendor): ?>
-                            <button class="btn-warning" onclick="(function(){var t=document.getElementById('k7TugInput').value.trim(); if(!t){alert('Cari nomor TUG dulu sebelum mencetak.');return;} window.open('printK7.php?tug='+encodeURIComponent(t), '_blank');})()"><i class="fas fa-print"></i> Cetak Bon (Format Resmi)</button>
-                            <button class="btn-info" onclick="(function(){var t=document.getElementById('k7TugInput').value.trim(); if(!t){alert('Cari nomor TUG dulu sebelum mencetak.');return;} window.open('printK7.php?tug='+encodeURIComponent(t), '_blank');})()"><i class="fas fa-file-pdf"></i> Simpan PDF</button>
+                            <button class="btn-info" onclick="(function(){var t=document.getElementById('k7TugInput').value.trim(); if(!t){alert('Cari nomor TUG dulu sebelum mencetak.');return;} window.open('printK7.php?tug='+encodeURIComponent(t), '_blank');})()"><i class="fas fa-save"></i> Simpan Surat TUG</button>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -3116,7 +3116,7 @@ if ($page === 'riwayat') {
                                                 <td><?= date('d-M-Y', strtotime($row['tanggal_diminta'])) ?></td>
                                                 <td><span class="status-badge <?= $statusClass ?>"><?= htmlspecialchars(dpbStatusLabel($row['status'])) ?></span></td>
                                                 <td>
-                                                    <button type="button" class="btn-info" onclick="autofillSearchTug('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.35rem 0.8rem; border-radius:20px; font-size:0.75rem;">Pilih &amp; Muat</button>
+                                                    <button type="button" class="btn-info" onclick="autofillSearchTug('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.35rem 0.8rem; border-radius:20px; font-size:0.75rem;">Pilih</button>
                                                 </td>
                                             </tr>
                                         <?php endforeach; ?>
@@ -3190,7 +3190,7 @@ if ($page === 'riwayat') {
                                                 <td><?= date('d-M-Y', strtotime($row['tanggal_diminta'])) ?></td>
                                                 <td><span class="status-badge status-selesai">Selesai</span></td>
                                                 <td>
-                                                    <button type="button" class="btn-info" onclick="autofillSearchTug('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.35rem 0.8rem; border-radius:20px; font-size:0.75rem;">Pilih &amp; Muat</button>
+                                                    <button type="button" class="btn-info" onclick="autofillSearchTug('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.35rem 0.8rem; border-radius:20px; font-size:0.75rem;">Pilih</button>
                                                 </td>
                                             </tr>
                                         <?php endforeach; ?>
@@ -4288,23 +4288,45 @@ if ($page === 'riwayat') {
                         };
                         printPdfSection.appendChild(printDpbBtn);
                     } else if (type === 'k3') {
+                        var printK3SjBtn = document.createElement('button');
+                        printK3SjBtn.className = 'btn-warning';
+                        printK3SjBtn.style.padding = '0.7rem 1.5rem';
+                        printK3SjBtn.style.borderRadius = '10px';
+                        printK3SjBtn.style.fontWeight = '600';
+                        printK3SjBtn.innerHTML = '<i class="fas fa-save"></i> Simpan Surat Jalan';
+                        printK3SjBtn.onclick = function() {
+                            window.open('printK3SJ.php?tug=' + encodeURIComponent(document.getElementById("g2ModalTugTitle").innerText), '_blank');
+                        };
+                        printPdfSection.appendChild(printK3SjBtn);
+
                         var printK3Btn = document.createElement('button');
-                        printK3Btn.className = 'btn-warning';
+                        printK3Btn.className = 'btn-info';
                         printK3Btn.style.padding = '0.7rem 1.5rem';
                         printK3Btn.style.borderRadius = '10px';
                         printK3Btn.style.fontWeight = '600';
-                        printK3Btn.innerHTML = '<i class="fas fa-print"></i> Cetak K3';
+                        printK3Btn.innerHTML = '<i class="fas fa-save"></i> Simpan Surat TUG';
                         printK3Btn.onclick = function() {
                             window.open('printK3.php?tug=' + encodeURIComponent(document.getElementById("g2ModalTugTitle").innerText), '_blank');
                         };
                         printPdfSection.appendChild(printK3Btn);
                     } else if (type === 'k7') {
+                        var printK7SjBtn = document.createElement('button');
+                        printK7SjBtn.className = 'btn-warning';
+                        printK7SjBtn.style.padding = '0.7rem 1.5rem';
+                        printK7SjBtn.style.borderRadius = '10px';
+                        printK7SjBtn.style.fontWeight = '600';
+                        printK7SjBtn.innerHTML = '<i class="fas fa-save"></i> Simpan Surat Jalan';
+                        printK7SjBtn.onclick = function() {
+                            window.open('printK7SJ.php?tug=' + encodeURIComponent(document.getElementById("g2ModalTugTitle").innerText), '_blank');
+                        };
+                        printPdfSection.appendChild(printK7SjBtn);
+
                         var printK7Btn = document.createElement('button');
-                        printK7Btn.className = 'btn-warning';
+                        printK7Btn.className = 'btn-info';
                         printK7Btn.style.padding = '0.7rem 1.5rem';
                         printK7Btn.style.borderRadius = '10px';
                         printK7Btn.style.fontWeight = '600';
-                        printK7Btn.innerHTML = '<i class="fas fa-print"></i> Cetak K7';
+                        printK7Btn.innerHTML = '<i class="fas fa-save"></i> Simpan Surat TUG';
                         printK7Btn.onclick = function() {
                             window.open('printK7.php?tug=' + encodeURIComponent(document.getElementById("g2ModalTugTitle").innerText), '_blank');
                         };

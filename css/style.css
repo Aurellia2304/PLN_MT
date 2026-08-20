@@ -384,6 +384,19 @@ tbody tr:hover {
   background: #f8fbfd;
 }
 
+/* Custom Fixed-Layout Tables */
+.fixed-table {
+  table-layout: fixed;
+  width: 100%;
+}
+.fixed-table th,
+.fixed-table td {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
+  vertical-align: middle;
+}
+
 /* Kolom terkunci (kontak vendor, hanya admin) */
 .locked-cell {
   color: #9aa8b5;
@@ -1202,6 +1215,7 @@ body.adm-body {
   display: flex;
   flex-direction: column;
   transition: margin-left 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 0;
 }
 
 .adm-content {
