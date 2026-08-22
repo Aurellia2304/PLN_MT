@@ -2,6 +2,28 @@
 require_once 'config.php';
 require_once 'functions.php';
 
+// 1. AJAX Authentication Gate
+if (isset($_GET['ajax'])) {
+    if (!isLoggedIn()) {
+        http_response_code(401);
+        header('Content-Type: application/json');
+        echo json_encode(['error' => 'Unauthorized. Harap login terlebih dahulu.']);
+        exit();
+    }
+}
+
+// 2. Global CSRF Protection Gate
+if ($_SERVER['REQUEST_METHOD'] === 'POST' || isset($_GET['delete']) || isset($_GET['cancel_dpb']) || isset($_GET['delete_dpb']) || isset($_GET['cancel_k3']) || isset($_GET['delete_k3']) || isset($_GET['cancel_k7']) || isset($_GET['delete_k7'])) {
+    if (!isset($_POST['login']) && !isset($_POST['register'])) {
+        $csrfToken = $_POST['csrf_token'] ?? $_GET['csrf_token'] ?? '';
+        if (!verifyCsrfToken($csrfToken)) {
+            $_SESSION['error'] = "Gagal: Sesi verifikasi formulir (CSRF Token) tidak valid atau kedaluwarsa.";
+            header("Location: index.php");
+            exit();
+        }
+    }
+}
+
 // =========================================================
 // AJAX ENDPOINTS
 // =========================================================
@@ -41,11 +63,11 @@ if (isset($_GET['ajax'])) {
             echo json_encode(['error' => 'Akses ditolak.']);
             exit();
         }
-        $stmt = $db->query("SELECT di.id, di.quantity_received AS quantity, di.sn AS sn, m.name AS material_name, m.norm AS material_norm, m.unit AS material_unit,
+        $stmt = $db->query("SELECT di.id, di.quantity_received AS quantity, di.sn AS sn, COALESCE(m.name, '[Material Dihapus]') AS material_name, COALESCE(m.norm, '-') AS material_norm, COALESCE(m.unit, '-') AS material_unit,
                                    d.tug_number AS no_dpb, d.surat_jalan_number AS surat_jalan, d.tanggal_diminta AS tanggal_keluar, v.name AS vendor_name
                             FROM dpb_items di
                             JOIN dpb_transactions d ON di.dpb_id = d.id
-                            JOIN materials m ON di.material_id = m.id
+                            LEFT JOIN materials m ON di.material_id = m.id
                             JOIN vendors v ON d.vendor_id = v.id
                             WHERE di.quantity_received > 0
                             ORDER BY d.tanggal_diminta DESC, di.id DESC");
@@ -85,6 +107,11 @@ if (isset($_GET['ajax'])) {
 
         if (!$dpb) {
             echo json_encode(['error' => 'Nomor TUG tidak ditemukan. Pastikan sudah pernah diajukan.']);
+            exit();
+        }
+
+        if (isVendor() && (int)$dpb['vendor_id'] !== (int)currentVendorId()) {
+            echo json_encode(['error' => 'Akses ditolak: Anda tidak memiliki wewenang untuk mengakses data transaksi ini.']);
             exit();
         }
 
@@ -148,6 +175,11 @@ if (isset($_GET['ajax'])) {
             exit();
         }
 
+        if (isVendor() && (int)$k3['vendor_id'] !== (int)currentVendorId()) {
+            echo json_encode(['error' => 'Akses ditolak: Anda tidak memiliki wewenang untuk mengakses data transaksi ini.']);
+            exit();
+        }
+
         echo json_encode([
             'id'                  => $k3['id'],
             'tug_number'          => $k3['tug_number'],
@@ -186,6 +218,11 @@ if (isset($_GET['ajax'])) {
 
         if (!$k7) {
             echo json_encode(['error' => 'Nomor TUG K7 tidak ditemukan. Pastikan sudah pernah diajukan.']);
+            exit();
+        }
+
+        if (isVendor() && (int)$k7['vendor_id'] !== (int)currentVendorId()) {
+            echo json_encode(['error' => 'Akses ditolak: Anda tidak memiliki wewenang untuk mengakses data transaksi ini.']);
             exit();
         }
 
@@ -263,13 +300,13 @@ if (isset($_POST['add_material']) || isset($_POST['edit_material']) || (isset($_
 if (isset($_POST['login']) || isset($_POST['register'])) {
     include 'auth.php';
 }
-if (isset($_POST['create_dpb']) || isset($_POST['update_status']) || isset($_POST['update_received']) || isset($_POST['approve_dpb']) || isset($_POST['reject_dpb']) || isset($_POST['update_signers']) || isset($_GET['delete_dpb'])) {
+if (isset($_POST['create_dpb']) || isset($_POST['update_status']) || isset($_POST['update_received']) || isset($_POST['approve_dpb']) || isset($_POST['reject_dpb']) || isset($_POST['update_signers']) || isset($_GET['delete_dpb']) || isset($_GET['cancel_dpb'])) {
     include 'dpb.php';
 }
-if (isset($_POST['create_k3']) || isset($_POST['update_k3_status']) || isset($_POST['update_k3_received']) || isset($_POST['update_k3_details']) || isset($_POST['update_k3_signers']) || isset($_GET['delete_k3'])) {
+if (isset($_POST['create_k3']) || isset($_POST['update_k3_status']) || isset($_POST['update_k3_received']) || isset($_POST['update_k3_details']) || isset($_POST['update_k3_signers']) || isset($_GET['delete_k3']) || isset($_GET['cancel_k3'])) {
     include 'k3.php';
 }
-if (isset($_POST['create_k7']) || isset($_POST['update_k7_status']) || isset($_POST['update_k7_received']) || isset($_POST['update_k7_details']) || isset($_POST['update_k7_signers']) || isset($_GET['delete_k7'])) {
+if (isset($_POST['create_k7']) || isset($_POST['update_k7_status']) || isset($_POST['update_k7_received']) || isset($_POST['update_k7_details']) || isset($_POST['update_k7_signers']) || isset($_GET['delete_k7']) || isset($_GET['cancel_k7'])) {
     include 'k7.php';
 }
 
@@ -342,7 +379,7 @@ if ($page === 'dpb') {
         if ($tab === 'active') {
             $sqlConds[] = "d.status IN ('belum_jalan', 'aktif', 'menunggu_persetujuan')";
         } else {
-            $sqlConds[] = "d.status = 'selesai'";
+            $sqlConds[] = "d.status IN ('selesai', 'cancel')";
         }
         
         if ($q !== '') {
@@ -432,7 +469,7 @@ if ($page === 'dpb') {
     $active_list = $activeDpbStmt->fetchAll(PDO::FETCH_ASSOC);
 
     $offsetHistory = ($hpage - 1) * $limit;
-    $sqlConds = ["d.status = 'selesai'"];
+    $sqlConds = ["d.status IN ('selesai', 'cancel')"];
     $sqlParams = [];
 
     if ($is_vendor) {
@@ -1058,7 +1095,7 @@ if ($page === 'riwayat') {
         $paged_applications = array_slice($all_applications, ($appPage - 1) * $limit, $limit);
 
         // 2. Daftar Vendor List
-        $stmt = $db->query("SELECT * FROM vendors ORDER BY name ASC");
+        $stmt = $db->query("SELECT v.*, u.password_plain FROM vendors v LEFT JOIN users u ON u.vendor_id = v.id ORDER BY v.name ASC");
         $all_vendors = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         // Pagination Vendor terdaftar
@@ -1178,7 +1215,7 @@ if ($page === 'riwayat') {
     <title>PLN Material · Gudang</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css?v=<?= filemtime(__DIR__ . '/css/style.css') ?>">
 </head>
 <body<?= ($is_admin || $is_vendor || $is_gudang2) ? ' class="adm-body"' : '' ?>>
 
@@ -1592,7 +1629,8 @@ if ($page === 'riwayat') {
                     <!-- Form Tambah Vendor (Hidden by default, toggled via JS) -->
                     <div id="addVendorFormBlock" class="card" style="display: none; border: 1px solid #dbe4ec; margin-bottom: 24px; background: #f8fafc; padding: 20px; border-radius: 16px;">
                         <h4 style="color:#0b2b4a; margin-top:0; margin-bottom:1rem;"><i class="fas fa-plus-circle"></i> Form Tambah Vendor Baru</h4>
-                        <form method="POST" action="vendor.php">
+                        <form method="POST" action="vendor.php" id="addVendorForm">
+                            <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
                             <div class="flex-row">
                                 <div class="form-group">
                                     <label>Nama PT</label>
@@ -1756,6 +1794,7 @@ if ($page === 'riwayat') {
                 document.getElementById('vDetAddress').textContent = vendor.address || '-';
                 document.getElementById('vDetPhone').textContent = vendor.phone || '-';
                 document.getElementById('vDetEmail').textContent = vendor.email || '-';
+                document.getElementById('vDetPassword').textContent = vendor.password_plain || 'Belum diatur / hashed';
                 
                 var statusSpan = '';
                 if ((vendor.status || 'aktif') === 'aktif') {
@@ -1854,46 +1893,59 @@ if ($page === 'riwayat') {
 
                 <!-- 1. FORM INPUT MATERIAL (Hanya Admin) -->
                 <?php if ($is_admin): ?>
+                <?php
+                $prev_input = $_SESSION['prev_input'] ?? null;
+                $has_prev = !empty($prev_input);
+                $prev_name = $prev_input['material_name'] ?? '';
+                $prev_norm = $prev_input['material_norm'] ?? '';
+                $prev_unit = $prev_input['material_unit'] ?? 'BH';
+                $prev_pabrikan = $prev_input['pabrikan'] ?? '';
+                $prev_kontrak = $prev_input['nomor_kontrak'] ?? '';
+                $prev_tanggal = $prev_input['tanggal_datang'] ?? date('Y-m-d');
+                $prev_stock = $prev_input['material_stock'] ?? '0';
+                unset($_SESSION['prev_input']);
+                ?>
                 <div style="margin-bottom: 1.5rem;">
                     <button type="button" class="btn-success" id="btnToggleInputMaterial" onclick="toggleInputMaterialForm()"><i class="fas fa-plus"></i> Input Material</button>
                 </div>
 
-                <div class="card" id="inputMaterialFormWrap" style="display: none; margin-bottom: 24px;">
+                <div class="card" id="inputMaterialFormWrap" style="display: <?= $has_prev ? 'block' : 'none' ?>; margin-bottom: 24px;">
                     <h3><i class="fas fa-cube"></i> Input Material Baru</h3>
-                    <form method="POST" action="material.php" style="margin-bottom: 1.5rem;">
+                    <form method="POST" action="material.php" id="addMaterialForm" style="margin-bottom: 1.5rem;">
+                        <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
                         <div class="form-group">
                             <label>Nama Material</label>
-                            <input type="text" id="materialNameInput" name="material_name" placeholder="contoh: DUDUKAN TRAFO 2 TIANG" required>
+                            <input type="text" id="materialNameInput" name="material_name" placeholder="contoh: DUDUKAN TRAFO 2 TIANG" value="<?= htmlspecialchars($prev_name) ?>" required>
                         </div>
                         <div class="form-group">
                             <label>Normalisasi</label>
-                            <input type="text" id="materialNormInput" name="material_norm" placeholder="Input Normalisasi">
+                            <input type="text" id="materialNormInput" name="material_norm" placeholder="Input Normalisasi" value="<?= htmlspecialchars($prev_norm) ?>">
                         </div>
                         <div class="form-group">
                             <label>Satuan</label>
                             <select name="material_unit">
-                                <option value="BH">BH</option>
-                                <option value="SET">SET</option>
-                                <option value="M">M</option>
-                                <option value="PACK">PACK</option>
-                                <option value="ROLL">ROLL</option>
+                                <option value="BH" <?= $prev_unit === 'BH' ? 'selected' : '' ?>>BH</option>
+                                <option value="SET" <?= $prev_unit === 'SET' ? 'selected' : '' ?>>SET</option>
+                                <option value="M" <?= $prev_unit === 'M' ? 'selected' : '' ?>>M</option>
+                                <option value="PACK" <?= $prev_unit === 'PACK' ? 'selected' : '' ?>>PACK</option>
+                                <option value="ROLL" <?= $prev_unit === 'ROLL' ? 'selected' : '' ?>>ROLL</option>
                             </select>
                         </div>
                         <div class="form-group">
                             <label>Nama Pabrikan</label>
-                            <input type="text" name="pabrikan" placeholder="contoh: PT. Tembaga Jaya">
+                            <input type="text" name="pabrikan" placeholder="contoh: PT. Tembaga Jaya" value="<?= htmlspecialchars($prev_pabrikan) ?>">
                         </div>
                         <div class="form-group">
                             <label>Nomor Kontrak</label>
-                            <input type="text" name="nomor_kontrak" placeholder="contoh: 001/SPK/PLN/2026">
+                            <input type="text" name="nomor_kontrak" placeholder="contoh: 001/SPK/PLN/2026" value="<?= htmlspecialchars($prev_kontrak) ?>">
                         </div>
                         <div class="form-group">
                             <label>Tanggal Datang</label>
-                            <input type="date" name="tanggal_datang" required value="<?= date('Y-m-d') ?>">
+                            <input type="date" name="tanggal_datang" required value="<?= htmlspecialchars($prev_tanggal) ?>">
                         </div>
                         <div class="form-group">
                             <label>Jumlah Material</label>
-                            <input type="number" name="material_stock" min="0" step="1" placeholder="0" value="0" required>
+                            <input type="number" name="material_stock" min="0" step="1" placeholder="0" value="<?= htmlspecialchars($prev_stock) ?>" required>
                         </div>
                         <button type="submit" name="add_material" class="btn-success">Simpan Material</button>
                     </form>
@@ -2000,6 +2052,7 @@ if ($page === 'riwayat') {
                         </div>
 
                         <form method="POST" action="Dpb.php">
+                            <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
                             <!-- Hidden indicator to trigger the correct post handler -->
                             <input type="hidden" name="create_manual_sj" value="1">
                             
@@ -2450,7 +2503,13 @@ if ($page === 'riwayat') {
                                                 <td onclick="autofillSearchTug('<?= htmlspecialchars($row['tug_number']) ?>')" style="cursor: pointer; color: var(--blue);"><strong><?= htmlspecialchars($row['tug_number']) ?></strong></td>
                                                 <td><?= htmlspecialchars($row['vendor_name'] ?? '-') ?></td>
                                                 <td><?= date('d-M-Y', strtotime($row['tanggal_diminta'])) ?></td>
-                                                <td><span class="status-badge status-selesai">Selesai</span></td>
+                                                <td>
+                                                    <?php if ($row['status'] === 'cancel'): ?>
+                                                        <span class="status-badge status-belum">Cancel</span>
+                                                    <?php else: ?>
+                                                        <span class="status-badge status-selesai">Selesai</span>
+                                                    <?php endif; ?>
+                                                </td>
                                                 <td>
                                                     <button type="button" class="btn-info" onclick="autofillSearchTug('<?= htmlspecialchars($row['tug_number']) ?>')" style="padding:0.35rem 0.8rem; border-radius:20px; font-size:0.75rem;">Pilih</button>
                                                 </td>
@@ -2481,6 +2540,7 @@ if ($page === 'riwayat') {
                                 <h3><i class="fas fa-file-signature"></i> Ajukan Permintaan Material Baru (DPB)</h3>
                         
                                 <form method="POST" action="Dpb.php" id="dpbCreateForm">
+                                    <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
                                     <div class="flex-row">
                                         <div class="form-group">
                                             <label>Nomor TUG</label>
@@ -2840,6 +2900,7 @@ if ($page === 'riwayat') {
                                 <h3><i class="fas fa-file-signature"></i> Ajukan Pengembalian Material (K3)</h3>
                         
                                 <form method="POST" action="k3.php" id="k3CreateForm">
+                                    <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
                                     <div class="flex-row">
                                         <div class="form-group">
                                             <label>Nomor TUG K3</label>
@@ -3219,6 +3280,7 @@ if ($page === 'riwayat') {
                                 <h3><i class="fas fa-file-signature"></i> Ajukan Pemakaian Material Bekas (K7)</h3>
                         
                                 <form method="POST" action="k7.php" id="k7CreateForm">
+                                    <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
                                     <div class="flex-row">
                                         <div class="form-group">
                                             <label>Nomor TUG K7</label>
@@ -3749,6 +3811,7 @@ if ($page === 'riwayat') {
         <span class="close" onclick="closeMaterialEditModal()">&times;</span>
         <h2><i class="fas fa-edit"></i> Edit Material</h2>
         <form method="POST" action="material.php" id="materialEditForm">
+            <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
             <input type="hidden" name="material_id" id="editMaterialId">
             <div class="form-group">
                 <label>Nama Material</label>
@@ -3838,6 +3901,10 @@ if ($page === 'riwayat') {
                     <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: left;" id="vDetEmail"></td>
                 </tr>
                 <tr>
+                    <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: 600; text-align: left;">Password</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: left;" id="vDetPassword"></td>
+                </tr>
+                <tr>
                     <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: 600; text-align: left;">Status</td>
                     <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: left;" id="vDetStatus"></td>
                 </tr>
@@ -3851,7 +3918,8 @@ if ($page === 'riwayat') {
     <div class="modal-content" style="max-width: 600px;">
         <span class="close" onclick="closeVendorEditModal()">&times;</span>
         <h2 style="color:#0b2b4a;"><i class="fas fa-edit"></i> Edit Data &amp; Defaults Vendor</h2>
-        <form method="POST" action="vendor.php" style="margin-top: 1rem;">
+        <form method="POST" action="vendor.php" id="vendorEditForm" style="margin-top: 1rem;">
+            <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
             <input type="hidden" name="vendor_id" id="editVendorId">
             <div class="flex-row">
                 <div class="form-group">
@@ -3872,6 +3940,10 @@ if ($page === 'riwayat') {
                     <label>Email</label>
                     <input type="email" name="vendor_email" id="editVendorEmail" required>
                 </div>
+                <div class="form-group">
+                    <label>Password (maks. 7 digit, kosongkan jika tidak diubah)</label>
+                    <input type="password" name="vendor_password" placeholder="******" maxlength="7">
+                </div>
             </div>
             <div style="margin-top:1.5rem; display: flex; gap: 8px; justify-content: flex-end;">
                 <button type="submit" name="edit_vendor" class="btn-success">Simpan Perubahan</button>
@@ -3883,6 +3955,7 @@ if ($page === 'riwayat') {
 <?php endif; ?>
 
 <script>
+    window.CSRF_TOKEN = <?= json_encode(generateCsrfToken()) ?>;
     window.AUTO_OPEN_MODAL = <?= $openModal ? json_encode($openModal) : 'false' ?>;
     window.IS_ADMIN = <?= ($is_admin || $is_gudang2) ? 'true' : 'false' ?>;
     window.IS_REAL_ADMIN = <?= $is_admin ? 'true' : 'false' ?>;

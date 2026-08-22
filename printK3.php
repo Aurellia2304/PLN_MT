@@ -61,7 +61,7 @@ $kondisiList = [
   .info-line .info-colon { flex-shrink:0; width:12px; }
   .info-line .info-value { flex:1; }
   * { box-sizing:border-box; }
-  @page { size: A4 landscape; margin: 10mm; }
+  @page { size: A4 landscape; margin: 0; }
   body { font-family: Arial, Helvetica, sans-serif; font-size:11px; color:#000; margin:0; padding:20px; background:#ddd; }
   .toolbar { max-width:1080px; margin:0 auto 12px; display:flex; gap:10px; }
   .toolbar button, .toolbar a {
@@ -91,20 +91,25 @@ $kondisiList = [
   table.items td.left { text-align:left; }
 
   .sign-row td { vertical-align:top; padding-top:6px; }
-  .sign-role { text-align:left; font-weight:700; margin:0 0 40px; }
+  .sign-role { text-align:left; font-weight:700; margin:0 0 25px; }
   .sign-name { font-weight:700; border-top:1px solid #333; margin-top:0; padding-top:4px; text-transform:uppercase; text-align:center; min-height:16px; }
 
   .kj-box { display:inline-block; border:1px solid #333; width:15px; height:15px; margin-right:2px; }
 
   .kondisi-list div.active { font-weight:800; }
 
+  .stabilo-masih_dapat_dipergunakan { background-color: #ffff00 !important; color: #000 !important; font-weight: bold; padding: 2px 6px; border-radius: 3px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .stabilo-rusak { background-color: #ff4d4d !important; color: #000 !important; font-weight: bold; padding: 2px 6px; border-radius: 3px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .stabilo-baru { background-color: #00ff00 !important; color: #000 !important; font-weight: bold; padding: 2px 6px; border-radius: 3px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .stabilo-garansi { background-color: #33ccff !important; color: #000 !important; font-weight: bold; padding: 2px 6px; border-radius: 3px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
   .header-section {
     background-color: #fffbe6 !important; /* Kuning muda pastel */
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
-    padding: 16px 20px;
-    border-radius: 12px;
-    margin-bottom: 15px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    margin-bottom: 8px;
     border: 1px solid #ffe58f;
   }
   .header-section table.frame, 
@@ -113,9 +118,9 @@ $kondisiList = [
   }
 
   @media print {
-    body { background:#fff; padding:0; }
+    body { background:#fff; padding:0; margin: 10mm; }
     .toolbar { display:none; }
-    .sheet { border:none; max-width:100%; box-shadow:none; margin:0 auto; page-break-after:always; break-after:page; }
+    .sheet { border:none; max-width:100%; box-shadow:none; margin:0 auto; padding:4px !important; page-break-after:always; break-after:page; }
     .sheet:last-of-type { page-break-after: avoid; break-after: avoid; }
     .header-section { border: 1px solid #ffe58f; }
     .page-break { page-break-after: always; break-after: page; }
@@ -146,32 +151,19 @@ foreach ($chunks as $pageIndex => $pageItems):
   <div class="header-section">
     <table class="frame">
       <tr>
-        <td class="tug-title" rowspan="3" style="width:13%; vertical-align:middle;"><?= htmlspecialchars($tugBig) ?></td>
-        <td class="title-cell" style="width:57%;">
-          <div style="font-size:11px; font-weight:700;">PT. PLN (PERSERO) UID JATIM UP3 MALANG</div>
-          <h1>BON PENGEMBALIAN MATERIAL</h1>
+        <td class="tug-title" rowspan="2" style="width:13%; vertical-align:middle;"><?= htmlspecialchars($tugBig) ?></td>
+        <td class="title-cell" style="width:57%; padding: 4px;">
+          <div style="font-size:10px; font-weight:700; margin-bottom: 2px;">PT. PLN (PERSERO) UID JATIM UP3 MALANG</div>
+          <h1 style="font-size:16px; margin:2px 0;">BON PENGEMBALIAN MATERIAL</h1>
         </td>
-        <td class="tug-box" rowspan="3" style="width:30%; vertical-align:middle;">
-          <div style="font-size:10px; font-weight:700; margin-bottom:4px;">Untuk TUG (Tata Usaha Gudang)</div>
-          <div class="tug-number"><?= htmlspecialchars($k3['tug_number']) ?></div>
-        </td>
-      </tr>
-      <tr>
-        <td style="font-size:9.5px;">
-          Tanggal<br>diminta
-          <table class="date-grid" style="margin-top:2px;">
-            <tr><td>Tgl.</td><td>Bln.</td><td>Thn.</td></tr>
-            <tr style="font-weight:700;"><td><?= date('d', $d) ?></td><td><?= date('m', $d) ?></td><td><?= date('Y', $d) ?></td></tr>
-          </table>
+        <td class="tug-box" rowspan="2" style="width:30%; vertical-align:middle;">
+          <div style="font-size:9.5px; font-weight:700; margin-bottom:2px;">Untuk TUG (Tata Usaha Gudang)</div>
+          <div class="tug-number" style="font-size:15px;"><?= htmlspecialchars($k3['tug_number']) ?></div>
         </td>
       </tr>
       <tr>
-        <td style="font-size:9.5px;">
-          Tanggal<br>diterima
-          <table class="date-grid" style="margin-top:2px;">
-            <tr><td>Tgl.</td><td>Bln.</td><td>Thn.</td></tr>
-            <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
-          </table>
+        <td style="font-size:9.5px; text-align:center; padding:3px;">
+          <strong>Tanggal Diminta:</strong> <?= date('d-m-Y', $d) ?>
         </td>
       </tr>
     </table>
@@ -197,21 +189,15 @@ foreach ($chunks as $pageIndex => $pageItems):
   <table class="items">
     <thead>
       <tr>
-        <th rowspan="2" style="width:4%;">No.<br>Urut</th>
-        <th rowspan="2" style="width:26%;">Nama Barang<br>(ditulis selengkap - lengkapnya)</th>
-        <th rowspan="2" style="width:9%;">No.<br>Normalisasi</th>
-        <th rowspan="2" style="width:5%;">Sa-<br>tuan</th>
-        <th colspan="2" style="width:16%;">Banyaknya Dikembalikan</th>
-        <th colspan="2" style="width:16%;">Banyaknya Diterima</th>
-        <th rowspan="2" style="width:6%;">Kode</th>
-        <th rowspan="2" style="width:9%;">Harga<br>Satuan</th>
-        <th rowspan="2" style="width:13%;">Jumlah Uang<br>Rp.</th>
-      </tr>
-      <tr>
-        <th style="width:7%;">dengan angka</th>
-        <th style="width:9%;">dengan huruf</th>
-        <th style="width:7%;">dengan angka</th>
-        <th style="width:9%;">dengan huruf</th>
+        <th style="width:4%;">No.<br>Urut</th>
+        <th style="width:32%;">Nama Barang<br>(ditulis selengkap - lengkapnya)</th>
+        <th style="width:10%;">No.<br>Normalisasi</th>
+        <th style="width:5%;">Sa-<br>tuan</th>
+        <th style="width:10%;">Banyaknya Dikembalikan</th>
+        <th style="width:10%;">Banyaknya Diterima</th>
+        <th style="width:6%;">Kode</th>
+        <th style="width:10%;">Harga<br>Satuan</th>
+        <th style="width:13%;">Jumlah Uang<br>Rp.</th>
       </tr>
     </thead>
     <tbody>
@@ -228,9 +214,7 @@ foreach ($chunks as $pageIndex => $pageItems):
         <td><?= $it ? htmlspecialchars($it['norm'] ?? '') : '' ?></td>
         <td><?= $it ? htmlspecialchars($it['unit'] ?? '') : '' ?></td>
         <td><?= $it !== null ? $qr : '' ?></td>
-        <td class="left"><?= $it !== null ? terbilangID($qr) : '' ?></td>
         <td><?= $it !== null ? $qd : '' ?></td>
-        <td class="left"><?= $it !== null ? terbilangID($qd) : '' ?></td>
         <td><?= $it ? htmlspecialchars($it['kode'] ?? '') : '' ?></td>
         <td><?= $it && $harga > 0 ? number_format($harga, 0, ',', '.') : '' ?></td>
         <td><?= $it && $jumlah > 0 ? number_format($jumlah, 0, ',', '.') : '' ?></td>
@@ -252,7 +236,22 @@ foreach ($chunks as $pageIndex => $pageItems):
       </td>
       <td style="width:30%;">
         <div class="info-line" style="margin-bottom:6px;"><span class="info-label" style="width:100px;">NOMOR SERI</span><span class="info-colon">:</span><span class="info-value"><?= htmlspecialchars($k3['nomor_seri'] ?? '') ?>&nbsp;</span></div>
-        <div class="info-line" style="margin-bottom:6px;"><span class="info-label" style="width:100px;">KONDISI MATERIAL</span><span class="info-colon">:</span><span class="info-value"><?= htmlspecialchars($kondisiList[$k3['kondisi_material']] ?? '') ?></span></div>
+        <?php 
+        $kondisiKey = $k3['kondisi_material'] ?? '';
+        $kondisiLabel = $kondisiList[$kondisiKey] ?? '';
+        $stabiloClass = in_array($kondisiKey, ['rusak', 'masih_dapat_dipergunakan', 'baru', 'garansi']) ? 'stabilo-' . $kondisiKey : '';
+        ?>
+        <div class="info-line" style="margin-bottom:6px;">
+          <span class="info-label" style="width:100px;">KONDISI MATERIAL</span>
+          <span class="info-colon">:</span>
+          <span class="info-value">
+            <?php if ($stabiloClass): ?>
+              <span class="<?= $stabiloClass ?>"><?= htmlspecialchars($kondisiLabel) ?></span>
+            <?php else: ?>
+              <?= htmlspecialchars($kondisiLabel) ?>
+            <?php endif; ?>
+          </span>
+        </div>
         <div class="info-line" style="margin-bottom:6px;"><span class="info-label" style="width:100px;">KETERANGAN DETILE</span><span class="info-colon">:</span><span class="info-value"><?= htmlspecialchars($k3['keterangan'] ?: '') ?>&nbsp;</span></div>
         <div class="info-line" style="margin-bottom:6px;"><span class="info-label" style="width:100px;">NO. DPB / BUKTI</span><span class="info-colon">:</span><span class="info-value"><?= htmlspecialchars($k3['no_dpb_bukti'] ?? '') ?>&nbsp;</span></div>
         <div class="info-line"><span class="info-label" style="width:100px;">LOKASI PENEMPATAN<br>MATERIAL/DIPAKAI</span><span class="info-colon">:</span><span class="info-value"><?= htmlspecialchars($k3['lokasi_penempatan'] ?? '') ?>&nbsp;</span></div>

@@ -363,6 +363,8 @@ a {
 .table-wrap {
   overflow-x: auto;
   margin-top: 1rem;
+  width: 100%;
+  max-width: 100%;
 }
 table {
   width: 100%;
@@ -388,6 +390,7 @@ tbody tr:hover {
 .fixed-table {
   table-layout: fixed;
   width: 100%;
+  min-width: 1200px;
 }
 .fixed-table th,
 .fixed-table td {

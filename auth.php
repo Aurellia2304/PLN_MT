@@ -1,6 +1,7 @@
 <?php
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
 
 // Perlu di-require karena auth.php bisa diakses LANGSUNG lewat
 // form action="auth.php" (bukan hanya lewat include dari index.php).
@@ -16,14 +17,33 @@ if (session_status() === PHP_SESSION_NONE) {
 // LOGIN
 // =========================================================
 if (isset($_POST['login'])) {
-    $email = trim($_POST['email'] ?? '');
+    if (isset($_SESSION['login_lock_time']) && time() < $_SESSION['login_lock_time']) {
+        $remaining = $_SESSION['login_lock_time'] - time();
+        $_SESSION['error'] = "Terlalu banyak percobaan login salah. Akun Anda dikunci sementara. Silakan coba lagi dalam " . $remaining . " detik.";
+        $_SESSION['open_modal'] = 'login';
+        header("Location: index.php");
+        exit();
+    }
+
+    $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
 
-    $stmt = $db->prepare("SELECT * FROM users WHERE email = ?");
-    $stmt->execute([$email]);
+    $stmt = $db->prepare("
+        SELECT * 
+        FROM users 
+        WHERE email = ? 
+           OR SPLIT_PART(email, '@', 1) = ? 
+           OR LOWER(full_name) = LOWER(?)
+           OR (? = 'admin' AND role = 'admin')
+           OR (? = 'gudang' AND role = 'gudang2')
+     ");
+    $stmt->execute([$username, $username, $username, $username, $username]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if ($user && password_verify($password, $user['password_hash'])) {
+        session_regenerate_id(true);
+        unset($_SESSION['login_attempts']);
+        unset($_SESSION['login_lock_time']);
         $_SESSION['user_id']        = $user['id'];
         $_SESSION['user_email']     = $user['email'];
         $_SESSION['user_name']      = $user['full_name'];
@@ -34,7 +54,14 @@ if (isset($_POST['login'])) {
         header("Location: index.php");
         exit();
     } else {
-        $_SESSION['error'] = "Email atau password salah!";
+        $_SESSION['login_attempts'] = ($_SESSION['login_attempts'] ?? 0) + 1;
+        if ($_SESSION['login_attempts'] >= 5) {
+            $_SESSION['login_lock_time'] = time() + 60; // lock for 60 seconds
+            $_SESSION['error'] = "Terlalu banyak percobaan login salah. Akun Anda dikunci sementara selama 60 detik.";
+        } else {
+            $tries_left = 5 - $_SESSION['login_attempts'];
+            $_SESSION['error'] = "Username atau password salah! Sisa percobaan: $tries_left";
+        }
         $_SESSION['open_modal'] = 'login';
         header("Location: index.php");
         exit();
@@ -91,8 +118,8 @@ if (isset($_POST['register'])) {
         }
 
         // Simpan ke pengajuan vendor
-        $stmt = $db->prepare("INSERT INTO vendor_applications (name, address, phone, email, password_hash, status) VALUES (?, ?, ?, ?, ?, 'Menunggu Persetujuan')");
-        $stmt->execute([$vendorName, $vendorAddr, $vendorPhone, $email, $passwordHash]);
+        $stmt = $db->prepare("INSERT INTO vendor_applications (name, address, phone, email, password_hash, password_plain, status) VALUES (?, ?, ?, ?, ?, ?, 'Menunggu Persetujuan')");
+        $stmt->execute([$vendorName, $vendorAddr, $vendorPhone, $email, $passwordHash, $passwordRaw]);
 
         $_SESSION['success'] = "Pendaftaran PT \"$vendorName\" berhasil dikirim! Menunggu persetujuan Admin.";
         $_SESSION['open_modal'] = 'login';

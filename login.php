@@ -275,8 +275,11 @@
 <div class="login-gate-page">
     <div class="login-gate-card">
         <div class="modal-brand">
-            <img src="images/logo.png" alt="PLN Logo">
-            <span>PLN UP3 Malang</span>
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <img src="images/logo.png" alt="PLN Logo" style="height: 52px; width: auto; margin: 0;">
+                <span style="font-size: 2.2rem; font-weight: 800; color: #FFFFFF; letter-spacing: 1px; text-shadow: 0 1px 2px rgba(8, 61, 68, 0.5); margin: 0;">VOLTA</span>
+            </div>
+            <span style="font-size: 0.95rem; font-weight: 600; color: #FFFFFF; letter-spacing: 0.5px; text-shadow: 0 1px 2px rgba(8, 61, 68, 0.5); margin-top: 0.4rem;">PLN UP3 Malang</span>
         </div>
 
         <h2 id="modalTitle">Selamat Datang</h2>
@@ -291,10 +294,10 @@
         <form method="POST" action="auth.php" id="authForm">
             <div id="loginFields">
                 <div class="form-group">
-                    <label>Email</label>
+                    <label>Username</label>
                     <div class="input-with-icon">
-                        <i class="fa-regular fa-envelope input-icon"></i>
-                        <input type="email" name="email" placeholder="email@pln.co.id" required>
+                        <i class="fa-regular fa-user input-icon"></i>
+                        <input type="text" name="username" placeholder="Masukkan username" required>
                     </div>
                 </div>
                 <div class="form-group">

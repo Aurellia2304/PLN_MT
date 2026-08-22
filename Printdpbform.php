@@ -51,7 +51,7 @@ $tugBig = $tugParts[0] ?? 'TUG';
   .info-line .info-colon { flex-shrink:0; width:12px; }
   .info-line .info-value { flex:1; }
   * { box-sizing:border-box; }
-  @page { size: A4 landscape; margin: 10mm; }
+  @page { size: A4 landscape; margin: 0; }
   body { font-family: Arial, Helvetica, sans-serif; font-size:11px; color:#000; margin:0; padding:20px; background:#ddd; }
   .toolbar { max-width:1080px; margin:0 auto 12px; display:flex; gap:10px; }
   .toolbar button, .toolbar a {
@@ -81,7 +81,7 @@ $tugBig = $tugParts[0] ?? 'TUG';
   table.items td.left { text-align:left; }
 
   .sign-row td { vertical-align:top; padding-top:6px; }
-  .sign-role { text-align:left; font-weight:700; margin:0 0 40px; }
+  .sign-role { text-align:left; font-weight:700; margin:0 0 25px; }
   .sign-name { font-weight:700; border-top:1px solid #333; margin-top:0; padding-top:4px; text-transform:uppercase; text-align:center; min-height:16px; }
 
   .kj-box { display:inline-block; border:1px solid #333; width:15px; height:15px; margin-right:2px; }
@@ -93,9 +93,9 @@ $tugBig = $tugParts[0] ?? 'TUG';
   }
 
   @media print {
-    body { background:#fff; padding:0; }
+    body { background:#fff; padding:0; margin: 10mm; }
     .toolbar { display:none; }
-    .sheet { border:none; max-width:100%; box-shadow:none; margin:0 auto; page-break-after:always; break-after:page; }
+    .sheet { border:none; max-width:100%; box-shadow:none; margin:0 auto; padding:4px !important; page-break-after:always; break-after:page; }
     .sheet:last-of-type { page-break-after: avoid; break-after: avoid; }
     .page-break { page-break-after: always; break-after: page; }
   }
@@ -124,34 +124,21 @@ foreach ($chunks as $pageIndex => $pageItems):
 
   <table class="frame header-section">
     <tr>
-      <td class="tug-title" rowspan="3" style="width:13%; vertical-align:middle;"><?= htmlspecialchars($tugBig) ?></td>
-      <td class="title-cell" style="width:57%; vertical-align:middle;">
-        <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:4px;">
-          <img src="images/logoPln.png?v=2" style="width:36px; height:auto; vertical-align:middle;">
-          <div style="font-size:11px; font-weight:700; text-align:left;">PT. PLN (PERSERO) UID JATIM<br>UP3 MALANG</div>
+      <td class="tug-title" rowspan="2" style="width:13%; vertical-align:middle;"><?= htmlspecialchars($tugBig) ?></td>
+      <td class="title-cell" style="width:57%; vertical-align:middle; padding: 4px;">
+        <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:2px;">
+          <img src="images/logoPln.png?v=2" style="width:24px; height:auto; vertical-align:middle;">
+          <div style="font-size:10px; font-weight:700; text-align:left;">PT. PLN (PERSERO) UID JATIM<br>UP3 MALANG</div>
         </div>
-        <h1>DAFTAR PERMINTAAN MATERIAL</h1>
+        <h1 style="font-size:16px; margin:2px 0;">DAFTAR PERMINTAAN MATERIAL</h1>
       </td>
-      <td class="tug-box" rowspan="3" style="width:30%; vertical-align:middle;">
-        <div class="tug-number"><?= htmlspecialchars($dpb['tug_number']) ?></div>
-      </td>
-    </tr>
-    <tr>
-      <td style="font-size:9.5px;">
-        Tanggal<br>diminta
-        <table class="date-grid" style="margin-top:2px;">
-          <tr><td>Tgl.</td><td>Bln.</td><td>Thn.</td></tr>
-          <tr style="font-weight:700;"><td><?= date('d', $d) ?></td><td><?= date('m', $d) ?></td><td><?= date('Y', $d) ?></td></tr>
-        </table>
+      <td class="tug-box" rowspan="2" style="width:30%; vertical-align:middle;">
+        <div class="tug-number" style="font-size:15px;"><?= htmlspecialchars($dpb['tug_number']) ?></div>
       </td>
     </tr>
     <tr>
-      <td style="font-size:9.5px;">
-        Tanggal<br>diberikan
-        <table class="date-grid" style="margin-top:2px;">
-          <tr><td>Tgl.</td><td>Bln.</td><td>Thn.</td></tr>
-          <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
-        </table>
+      <td style="font-size:9.5px; text-align:center; padding: 3px;">
+        <strong>Tanggal Diminta:</strong> <?= date('d-m-Y', $d) ?>
       </td>
     </tr>
   </table>
@@ -176,19 +163,13 @@ foreach ($chunks as $pageIndex => $pageItems):
   <table class="items">
     <thead>
       <tr>
-        <th rowspan="2" style="width:4%;">No.<br>Urut</th>
-        <th rowspan="2" style="width:26%;">Nama Barang<br>(ditulis selengkap - lengkapnya)</th>
-        <th rowspan="2" style="width:9%;">No.<br>Normalisasi</th>
-        <th rowspan="2" style="width:5%;">Sa-<br>tuan</th>
-        <th colspan="2" style="width:20%;">Banyaknya yang diminta</th>
-        <th colspan="2" style="width:20%;">Banyaknya yang diterima</th>
-        <th rowspan="2" style="width:16%;">Jumlah Uang<br>Rp.</th>
-      </tr>
-      <tr>
-        <th style="width:8%;">dengan angka</th>
-        <th style="width:12%;">dengan huruf</th>
-        <th style="width:8%;">dengan angka</th>
-        <th style="width:12%;">dengan huruf</th>
+        <th style="width:4%;">No.<br>Urut</th>
+        <th style="width:35%;">Nama Barang<br>(ditulis selengkap - lengkapnya)</th>
+        <th style="width:10%;">No.<br>Normalisasi</th>
+        <th style="width:5%;">Sa-<br>tuan</th>
+        <th style="width:15%;">Banyaknya yang diminta</th>
+        <th style="width:15%;">Banyaknya yang diterima</th>
+        <th style="width:16%;">Jumlah Uang<br>Rp.</th>
       </tr>
     </thead>
     <tbody>
@@ -203,9 +184,7 @@ foreach ($chunks as $pageIndex => $pageItems):
         <td><?= $it ? htmlspecialchars($it['norm'] ?? '') : '' ?></td>
         <td><?= $it ? htmlspecialchars($it['unit'] ?? '') : '' ?></td>
         <td><?= $it !== null ? $qr : '' ?></td>
-        <td class="left"><?= $it !== null ? terbilangID($qr) : '' ?></td>
         <td><?= $it !== null ? $qd : '' ?></td>
-        <td class="left"><?= $it !== null ? terbilangID($qd) : '' ?></td>
         <td></td>
       </tr>
       <?php endforeach; ?>

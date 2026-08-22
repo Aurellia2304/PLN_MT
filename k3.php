@@ -11,6 +11,11 @@ if (!isLoggedIn()) {
 // SIMPAN PENGAJUAN K3 BARU (admin ATAU vendor)
 // =========================================================
 if (isset($_POST['create_k3'])) {
+    if (isGudang2()) {
+        $_SESSION['error'] = "Akses ditolak: Petugas Gudang tidak diperbolehkan membuat pengajuan baru.";
+        header("Location: index.php?page=k3");
+        exit();
+    }
     $tug = trim($_POST['tug_number'] ?? '');
     $tanggal = $_POST['tanggal_diminta'] ?? date('Y-m-d');
     $vendorId = isVendor() ? currentVendorId() : ($_POST['vendor_id'] ?? null);
@@ -271,6 +276,34 @@ if (isset($_POST['update_k3_signers'])) {
 
     $_SESSION['success'] = "Data tanda tangan berhasil disimpan.";
     header("Location: index.php?page=k3&tug=" . urlencode($tug));
+    exit();
+}
+
+// =========================================================
+// BATALKAN K3 (khusus admin)
+// =========================================================
+if (isset($_GET['cancel_k3'])) {
+    if (!isAdmin()) {
+        $_SESSION['error'] = "Hanya admin gudang PLN yang dapat membatalkan K3.";
+        header("Location: index.php?page=k3");
+        exit();
+    }
+    $id = $_GET['cancel_k3'];
+
+    // Cek status K3 saat ini
+    $stmtCheck = $db->prepare("SELECT status FROM k3_transactions WHERE id = ?");
+    $stmtCheck->execute([$id]);
+    $currentStatus = $stmtCheck->fetchColumn();
+    if ($currentStatus === 'selesai') {
+        $_SESSION['error'] = "Data surat yang sudah selesai tidak dapat dibatalkan!";
+        header("Location: index.php?page=k3");
+        exit();
+    }
+
+    $stmt = $db->prepare("UPDATE k3_transactions SET status = 'cancel' WHERE id = ?");
+    $stmt->execute([$id]);
+    $_SESSION['success'] = "K3 berhasil dibatalkan (cancel).";
+    header("Location: index.php?page=k3");
     exit();
 }
 

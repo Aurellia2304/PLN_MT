@@ -2,6 +2,16 @@
 require_once 'config.php';
 require_once 'functions.php';
 
+function escapeFormula($val) {
+    if ($val === null || $val === '') return '';
+    $valStr = (string)$val;
+    $firstChar = substr($valStr, 0, 1);
+    if (in_array($firstChar, ['=', '+', '-', '@'], true)) {
+        return "'" . $valStr;
+    }
+    return $valStr;
+}
+
 // Check login
 if (!isLoggedIn()) {
     header("Location: index.php");
@@ -117,11 +127,11 @@ if ($table === 'rincian') {
     $no = 1;
     foreach ($data as $row) {
         $sheet->setCellValue('A' . $rowIdx, $no++);
-        $sheet->setCellValue('B' . $rowIdx, $row['material_name']);
+        $sheet->setCellValue('B' . $rowIdx, escapeFormula($row['material_name']));
         $sheet->setCellValue('C' . $rowIdx, $row['jumlah_pending']);
-        $sheet->setCellValue('D' . $rowIdx, $row['vendor_name']);
-        $sheet->setCellValue('E' . $rowIdx, $row['customer_name'] ?: '-');
-        $sheet->setCellValue('F' . $rowIdx, $row['tug_number'] ?: '-');
+        $sheet->setCellValue('D' . $rowIdx, escapeFormula($row['vendor_name']));
+        $sheet->setCellValue('E' . $rowIdx, escapeFormula($row['customer_name'] ?: '-'));
+        $sheet->setCellValue('F' . $rowIdx, escapeFormula($row['tug_number'] ?: '-'));
 
         // Alignments
         $sheet->getStyle('A' . $rowIdx)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
@@ -193,7 +203,7 @@ if ($table === 'rincian') {
     $no = 1;
     foreach ($data as $row) {
         $sheet->setCellValue('A' . $rowIdx, $no++);
-        $sheet->setCellValue('B' . $rowIdx, $row['material_name']);
+        $sheet->setCellValue('B' . $rowIdx, escapeFormula($row['material_name']));
         $sheet->setCellValue('C' . $rowIdx, $row['total_pending']);
 
         // Alignments

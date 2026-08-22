@@ -35,11 +35,11 @@ if ($q !== '') {
 $whereClause = 'WHERE ' . implode(' AND ', $sqlConds);
 
 $stmt = $db->prepare("
-    SELECT di.id, di.quantity_received AS quantity, di.sn AS sn, m.name AS material_name, m.norm AS material_norm, m.unit AS material_unit,
+    SELECT di.id, di.quantity_received AS quantity, di.sn AS sn, COALESCE(m.name, '[Material Dihapus]') AS material_name, COALESCE(m.norm, '-') AS material_norm, COALESCE(m.unit, '-') AS material_unit,
            d.tug_number AS no_dpb, d.surat_jalan_number AS surat_jalan, d.tanggal_diminta AS tanggal_keluar, v.name AS vendor_name
     FROM dpb_items di
     JOIN dpb_transactions d ON di.dpb_id = d.id
-    JOIN materials m ON di.material_id = m.id
+    LEFT JOIN materials m ON di.material_id = m.id
     JOIN vendors v ON d.vendor_id = v.id
     $whereClause
     ORDER BY d.tanggal_diminta DESC, di.id DESC
@@ -88,19 +88,29 @@ $sheet->getStyle('A4:J4')->getFont()->setBold(true)->setColor(new \PhpOffice\Php
 $sheet->getStyle('A4:J4')->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('0B2B4A');
 $sheet->getStyle('A4:J4')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
+function escapeFormula($val) {
+    if ($val === null || $val === '') return '';
+    $valStr = (string)$val;
+    $firstChar = substr($valStr, 0, 1);
+    if (in_array($firstChar, ['=', '+', '-', '@'], true)) {
+        return "'" . $valStr;
+    }
+    return $valStr;
+}
+
 // Data rows
 $rowIdx = 5;
 $no = 1;
 foreach ($data as $row) {
     $sheet->setCellValue('A' . $rowIdx, $no++);
-    $sheet->setCellValue('B' . $rowIdx, $row['material_name']);
-    $sheet->setCellValue('C' . $rowIdx, $row['material_norm']);
-    $sheet->setCellValue('D' . $rowIdx, $row['material_unit']);
+    $sheet->setCellValue('B' . $rowIdx, escapeFormula($row['material_name']));
+    $sheet->setCellValue('C' . $rowIdx, escapeFormula($row['material_norm']));
+    $sheet->setCellValue('D' . $rowIdx, escapeFormula($row['material_unit']));
     $sheet->setCellValue('E' . $rowIdx, $row['quantity']);
-    $sheet->setCellValue('F' . $rowIdx, $row['vendor_name'] ?: '-');
-    $sheet->setCellValue('G' . $rowIdx, $row['no_dpb'] ?: '-');
-    $sheet->setCellValue('H' . $rowIdx, $row['surat_jalan'] ?: '-');
-    $sheet->setCellValue('I' . $rowIdx, $row['sn'] ?: '-');
+    $sheet->setCellValue('F' . $rowIdx, escapeFormula($row['vendor_name'] ?: '-'));
+    $sheet->setCellValue('G' . $rowIdx, escapeFormula($row['no_dpb'] ?: '-'));
+    $sheet->setCellValue('H' . $rowIdx, escapeFormula($row['surat_jalan'] ?: '-'));
+    $sheet->setCellValue('I' . $rowIdx, escapeFormula($row['sn'] ?: '-'));
     $sheet->setCellValue('J' . $rowIdx, $row['tanggal_keluar'] ? date('d-m-Y', strtotime($row['tanggal_keluar'])) : '-');
 
     // Alignments

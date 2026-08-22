@@ -11,6 +11,11 @@ if (!isLoggedIn()) {
 // SIMPAN PENGAJUAN DPB BARU (admin ATAU vendor)
 // =========================================================
 if (isset($_POST['create_dpb'])) {
+    if (isGudang2()) {
+        $_SESSION['error'] = "Akses ditolak: Petugas Gudang tidak diperbolehkan membuat pengajuan baru.";
+        header("Location: index.php?page=dpb");
+        exit();
+    }
     $tug = trim($_POST['tug_number'] ?? '');
     $tanggal = $_POST['tanggal_diminta'] ?? date('Y-m-d');
 
@@ -340,7 +345,7 @@ if (isset($_POST['update_received'])) {
         foreach ($ids as $i => $itemId) {
             $newVal = max(0, (int)($received[$i] ?? 0));
 
-            $stmt = $db->prepare("SELECT quantity_received, material_id FROM dpb_items WHERE id = ?");
+            $stmt = $db->prepare("SELECT quantity_received, material_id FROM dpb_items WHERE id = ? FOR UPDATE");
             $stmt->execute([$itemId]);
             $oldRow = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -351,6 +356,16 @@ if (isset($_POST['update_received'])) {
                 $difference = $newVal - $oldVal;
 
                 if ($difference !== 0) {
+                    $stmtLock = $db->prepare("SELECT stock, name FROM materials WHERE id = ? FOR UPDATE");
+                    $stmtLock->execute([$materialId]);
+                    $matInfo = $stmtLock->fetch(PDO::FETCH_ASSOC);
+                    $currentStock = (int)($matInfo['stock'] ?? 0);
+                    $materialName = $matInfo['name'] ?? '';
+
+                    if ($difference > $currentStock) {
+                        throw new Exception("Stok material \"$materialName\" tidak mencukupi (tersisa $currentStock).");
+                    }
+
                     $stmtUpdateStock = $db->prepare("UPDATE materials SET stock = stock - ? WHERE id = ?");
                     $stmtUpdateStock->execute([$difference, $materialId]);
                 }
@@ -451,6 +466,34 @@ if (isset($_POST['update_signers'])) {
 
     $_SESSION['success'] = "Data tanda tangan berhasil disimpan.";
     header("Location: index.php?page=dpb&tug=" . urlencode($tug));
+    exit();
+}
+
+// =========================================================
+// BATALKAN DPB (khusus admin)
+// =========================================================
+if (isset($_GET['cancel_dpb'])) {
+    if (!isAdmin()) {
+        $_SESSION['error'] = "Hanya admin gudang PLN yang dapat membatalkan DPB.";
+        header("Location: index.php?page=dpb");
+        exit();
+    }
+    $id = $_GET['cancel_dpb'];
+
+    // Cek status DPB saat ini
+    $stmtCheck = $db->prepare("SELECT status FROM dpb_transactions WHERE id = ?");
+    $stmtCheck->execute([$id]);
+    $currentStatus = $stmtCheck->fetchColumn();
+    if ($currentStatus === 'selesai') {
+        $_SESSION['error'] = "Data surat yang sudah selesai tidak dapat dibatalkan!";
+        header("Location: index.php?page=dpb");
+        exit();
+    }
+
+    $stmt = $db->prepare("UPDATE dpb_transactions SET status = 'cancel' WHERE id = ?");
+    $stmt->execute([$id]);
+    $_SESSION['success'] = "DPB berhasil dibatalkan (cancel).";
+    header("Location: index.php?page=dpb");
     exit();
 }
 

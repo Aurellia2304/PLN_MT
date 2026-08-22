@@ -260,6 +260,7 @@ function dpbStatusLabel($status) {
     switch ($status) {
         case 'selesai':     return 'Selesai';
         case 'aktif':       return 'Belum Selesai';
+        case 'cancel':      return 'Cancel';
         case 'belum_jalan':
         default:            return 'Aktif';
     }
@@ -549,5 +550,26 @@ function isMaterialWajibSN($name) {
         }
     }
     return false;
+}
+
+function generateCsrfToken() {
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+function verifyCsrfToken($token) {
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    $sessionToken = $_SESSION['csrf_token'] ?? '';
+    if (empty($sessionToken) || empty($token)) {
+        return false;
+    }
+    return hash_equals($sessionToken, $token);
 }
 ?>

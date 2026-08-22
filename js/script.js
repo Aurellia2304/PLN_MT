@@ -194,12 +194,14 @@ function loadPendingDpbList() {
             escapeHtml(d.tanggal_diminta || "-") +
             '</td><td style="white-space:nowrap;">' +
             '<form method="POST" action="dpb.php" style="display:inline;">' +
+            '<input type="hidden" name="csrf_token" value="' + window.CSRF_TOKEN + '">' +
             '<input type="hidden" name="dpb_id" value="' +
             d.id +
             '">' +
             '<button type="submit" name="approve_dpb" class="btn-success" style="padding:0.3rem 0.8rem; border-radius:20px; font-size:0.75rem;">Setujui</button>' +
             "</form> " +
             '<form method="POST" action="dpb.php" style="display:inline;" onsubmit="return confirm(\'Yakin tolak pengajuan ini?\')">' +
+            '<input type="hidden" name="csrf_token" value="' + window.CSRF_TOKEN + '">' +
             '<input type="hidden" name="dpb_id" value="' +
             d.id +
             '">' +
@@ -702,39 +704,41 @@ function addK3ItemRow(prefill) {
   var row = document.createElement("div");
   row.className = "flex-row item-row";
   row.id = "k3ItemRow_" + idx + "_" + Date.now();
+  row.style.flexWrap = "nowrap";
+  row.style.gap = "0.5rem";
 
   row.innerHTML =
-    '<div class="form-group" style="flex:2;">' +
+    '<div class="form-group" style="flex:3; min-width:150px; margin-bottom:0;">' +
     "<label>Nama Material</label>" +
     '<input type="text" name="item_material_name[]" autocomplete="off" placeholder="ketik nama...">' +
     "</div>" +
-    '<div class="form-group">' +
+    '<div class="form-group" style="flex:2; min-width:120px; margin-bottom:0;">' +
     "<label>Normalisasi</label>" +
     '<input type="text" name="item_material_norm[]" autocomplete="off" placeholder="atau ketik kode...">' +
     "</div>" +
-    '<div class="form-group" style="max-width:100px;">' +
+    '<div class="form-group" style="flex:1; min-width:60px; max-width:80px; margin-bottom:0;">' +
     "<label>Satuan</label>" +
-    '<input type="text" name="item_unit_display[]" readonly>' +
+    '<input type="text" name="item_unit_display[]" readonly style="background:#f1f5f9; color:#64748b;">' +
     "</div>" +
-    '<div class="form-group" style="max-width:110px;">' +
+    '<div class="form-group" style="flex:1; min-width:70px; max-width:90px; margin-bottom:0;">' +
     "<label>Jumlah</label>" +
     '<input type="number" step="any" min="0" name="item_qty[]" value="' +
     (prefill && prefill.qty ? prefill.qty : "") +
     '" required>' +
     "</div>" +
-    '<div class="form-group" style="max-width:90px;">' +
+    '<div class="form-group" style="flex:1; min-width:70px; max-width:90px; margin-bottom:0;">' +
     "<label>Kode</label>" +
     '<input type="text" name="item_kode[]" value="' +
     (prefill && prefill.kode ? prefill.kode : "") +
     '">' +
     "</div>" +
-    '<div class="form-group" style="max-width:120px;">' +
+    '<div class="form-group" style="flex:1.5; min-width:100px; max-width:120px; margin-bottom:0;">' +
     "<label>Harga Satuan</label>" +
     '<input type="number" step="any" min="0" name="item_harga_satuan[]" value="' +
     (prefill && prefill.harga_satuan ? prefill.harga_satuan : "") +
     '">' +
     "</div>" +
-    '<button type="button" class="btn-danger" style="height:2.6rem; align-self:flex-end;" onclick="removeDpbItemRow(\'' +
+    '<button type="button" class="btn-danger" style="height:2.6rem; align-self:flex-end; margin-bottom:0; flex:0 0 auto;" onclick="removeDpbItemRow(\'' +
     row.id +
     '\')"><i class="fas fa-trash"></i></button>';
 
@@ -927,6 +931,7 @@ function loadDPB() {
           "</tbody></table></div>";
       } else {
         adminReceivedForm = '<form method="POST" action="dpb.php" id="dpbUpdateReceivedForm" style="margin-top:0.8rem;">' +
+          '<input type="hidden" name="csrf_token" value="' + window.CSRF_TOKEN + '">' +
           '<input type="hidden" name="dpb_id" value="' +
           data.id +
           '"><input type="hidden" name="tug_number" value="' +
@@ -940,34 +945,37 @@ function loadDPB() {
           "</form>";
       }
 
-      var deleteBtn = "";
-      if (data.status !== "aktif" && data.status !== "selesai") {
-        deleteBtn =
-          '<a href="dpb.php?delete_dpb=' +
+      var cancelBtn = "";
+      if (data.status !== "selesai" && data.status !== "cancel") {
+        cancelBtn =
+          '<a href="Dpb.php?cancel_dpb=' +
           data.id +
-          '" onclick="return confirm(\'Yakin hapus DPB ini?\')" class="btn-danger" style="padding:0.6rem 1.1rem; border-radius:30px; text-decoration:none; font-size:0.85rem;">Hapus DPB</a>';
+          '&csrf_token=' + window.CSRF_TOKEN +
+          '" onclick="return confirm(\'Yakin batalkan (cancel) DPB ini?\')" class="btn-danger" style="padding:0.6rem 1.1rem; border-radius:30px; text-decoration:none; font-size:0.85rem; background-color:#ef4444; color:#fff;">Cancel DPB</a>';
       }
 
       var adminStatusForm = !window.IS_ADMIN
         ? ""
         : data.status === "menunggu_persetujuan"
           ? '<div style="margin-top:0.8rem; display:flex; gap:0.6rem; flex-wrap:wrap; align-items:center;">' +
-            '<form method="POST" action="dpb.php" style="display:inline;">' +
+            '<form method="POST" action="Dpb.php" style="display:inline;">' +
+            '<input type="hidden" name="csrf_token" value="' + window.CSRF_TOKEN + '">' +
             '<input type="hidden" name="dpb_id" value="' +
             data.id +
             '">' +
             '<button type="submit" name="approve_dpb" class="btn-success">Setujui Pengajuan</button>' +
             "</form>" +
-            '<form method="POST" action="dpb.php" style="display:inline;" onsubmit="return confirm(\'Yakin tolak pengajuan ini?\')">' +
+            '<form method="POST" action="Dpb.php" style="display:inline;" onsubmit="return confirm(\'Yakin tolak pengajuan ini?\')">' +
+            '<input type="hidden" name="csrf_token" value="' + window.CSRF_TOKEN + '">' +
             '<input type="hidden" name="dpb_id" value="' +
             data.id +
             '">' +
             '<button type="submit" name="reject_dpb" class="btn-danger">Tolak Pengajuan</button>' +
             "</form>" +
-            deleteBtn +
+            cancelBtn +
             "</div>"
           : '<div style="margin-top:0.8rem; display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-end;">' +
-            deleteBtn +
+            cancelBtn +
             "</div>";
       var vendorActions = "";
       if (window.IS_VENDOR && (data.status === "aktif" || data.status === "selesai")) {
@@ -1190,7 +1198,7 @@ function terbilangID(n) {
 // includeHuruf: true -> render 2 sub-kolom (angka + huruf) per qtyField, seperti K3/K7
 //               false -> render 1 sub-kolom (angka saja), seperti DPB/Surat Angkutan
 function printItemRows(items, qtyFields, includeHuruf, minRows) {
-  includeHuruf = includeHuruf !== false;
+  includeHuruf = false;
   minRows = minRows || 8;
   var dotted = "border-bottom:1px dotted #000;";
   var rows = (items || []).map(function (it, i) {
@@ -1438,182 +1446,7 @@ function printDPB() {
     return;
   }
 
-  var d = data.tanggal_diminta ? new Date(data.tanggal_diminta) : new Date();
-  var noSurat = data.surat_jalan_number;
-
-  function formatDateJS(dateStr) {
-    if (!dateStr) return ".......................";
-    var parts = dateStr.split('-');
-    if (parts.length === 3) {
-      if (parts[0].length === 4) {
-        return parts[2] + '-' + parts[1] + '-' + parts[0];
-      }
-    }
-    return dateStr;
-  }
-  var diterimaTglStr = formatDateJS(data.diterima_tgl);
-  var malangTanggalStr = formatDateJS(data.malang_tanggal);
-
-  var items = (data.items || []).slice();
-  while (items.length < 5) items.push({});
-  var itemRows = items
-    .map(function (it, i) {
-      var isBlank = !it.material_name;
-      return (
-        '<tr style="height:26px;">' +
-        '<td style="border-left:1px solid #000; border-right:1px solid #000; border-bottom:1px dotted #000; text-align:center;">' +
-        (i + 1) +
-        "</td>" +
-        '<td style="border-right:1px solid #000; border-bottom:1px dotted #000; padding-left:4px;">' +
-        (isBlank ? "" : escapeHtml(it.material_name || "")) +
-        "</td>" +
-        '<td style="border-right:1px solid #000; border-bottom:1px dotted #000; text-align:center;">' +
-        (isBlank ? "" : escapeHtml(it.norm || "")) +
-        "</td>" +
-        '<td style="border-right:1px solid #000; border-bottom:1px dotted #000; text-align:center;">' +
-        (isBlank ? "" : escapeHtml(it.unit || "")) +
-        "</td>" +
-        '<td style="border-right:1px solid #000; border-bottom:1px dotted #000; text-align:center;">' +
-        (isBlank ? "" : it.quantity_received || 0) +
-        "</td>" +
-        '<td style="border-right:1px solid #000; border-bottom:1px dotted #000; text-align:center;">' +
-        (isBlank ? "" : it.quantity_requested || 0) +
-        "</td>" +
-        "</tr>"
-      );
-    })
-    .join("");
-
-  var html =
-    '<div style="font-family: Arial, sans-serif; font-size:11px; color:#000; padding:24px;">' +
-    // ===== KOP SURAT =====
-    '<table style="width:100%; border-collapse:collapse; margin-bottom:4px;"><tr>' +
-    '<td style="width:65%; vertical-align:top;">' +
-    '<table style="border-collapse:collapse;"><tr>' +
-    '<td style="vertical-align:top; padding-right:8px;"><img src="images/logoPln.png" style="width:42px; height:auto;"></td>' +
-    '<td style="vertical-align:top; line-height:1.5; padding-top:2px;">' +
-    '<div style="font-weight:800; font-size:13px;">PT PLN (PERSERO)</div>' +
-    "<div>UNIT INDUK DISTRIBUSI (UID) JAWA TIMUR</div>" +
-    "<div>UNIT PELAKSANA PELAYANAN PELANGGAN (UP3) MALANG</div>" +
-    "</td>" +
-    "</tr></table>" +
-    "</td>" +
-    '<td style="width:35%; vertical-align:top;">' +
-    '<table style="width:100%; border-collapse:collapse; font-size:9.5px;">' +
-    '<tr><td style="border:1px solid #000; padding:4px 6px; text-align:center; font-weight:600;">1. Pengantar&nbsp;&nbsp;2. Security&nbsp;&nbsp;3. Pengambil material</td></tr>' +
-    '<tr><td style="border:1px solid #000; border-top:none; padding:4px 6px; text-align:center;">' +
-    '<div style="font-weight:800;">PERHATIAN :</div>' +
-    "SEMUA RESIKO SETELAH MATERIAL KELUAR DARI LOGISTIK, MENJADI TANGGUNG JAWAB PENGAMBIL MATERIAL" +
-    "</td></tr>" +
-    "</table>" +
-    "</td>" +
-    "</tr></table>" +
-    // ===== JUDUL =====
-    '<h2 style="text-align:center; text-decoration:underline; margin:16px 0 2px; font-size:16px;">SURAT ANGKUTAN</h2>' +
-    '<p style="text-align:center; margin:0 0 10px; font-weight:600;">' +
-    escapeHtml(noSurat) +
-    "</p>" +
-    // ===== INFO ATAS =====
-    '<table style="width:100%; border-collapse:collapse; margin-top:6px;">' +
-    "<tr>" +
-    '<td style="width:14%; padding:2px 0;">Kendaraan No.</td><td style="width:2%;">:</td>' +
-    '<td style="width:34%;">' +
-    dottedLine("220px") +
-    "</td>" +
-    '<td style="width:50%; text-align:right; font-weight:800; vertical-align:bottom;">' +
-    escapeHtml(data.vendor_name || "") +
-    "</td>" +
-    "</tr>" +
-    "<tr>" +
-    '<td style="padding:2px 0;">Nama Pengemudi</td><td>:</td>' +
-    "<td>" +
-    dottedLine("220px") +
-    "</td><td></td>" +
-    "</tr>" +
-    "<tr>" +
-    '<td style="padding:6px 0 2px; vertical-align:top;">Dari Logistik</td><td style="vertical-align:top;">:</td>' +
-    '<td style="vertical-align:top;">UP3 MALANG<br><br>SPK NO. :</td>' +
-    '<td style="text-align:right; vertical-align:top;">' +
-    escapeHtml(data.ulp || "") +
-    "<br>" +
-    '<span style="text-decoration:underline; font-weight:600;">' +
-    escapeHtml(data.spk_number || "") +
-    "</span><br>" +
-    escapeHtml(data.customer_name || "") +
-    "</td>" +
-    "</tr>" +
-    "</table>" +
-    // ===== TABEL MATERIAL =====
-    '<table style="width:100%; border-collapse:collapse; margin-top:14px; border:1px solid #000;">' +
-    "<thead>" +
-    '<tr style="text-align:center; font-weight:600;">' +
-    '<td rowspan="2" style="border:1px solid #000; width:5%; padding:4px;">No.<br>Urut</td>' +
-    '<td rowspan="2" style="border:1px solid #000; width:38%; padding:4px;">Nama Barang<br>(ditulis selengkap - lengkapnya)</td>' +
-    '<td rowspan="2" style="border:1px solid #000; width:15%; padding:4px;">No.<br>Normalisasi</td>' +
-    '<td rowspan="2" style="border:1px solid #000; width:8%; padding:4px;">Sa-<br>tuan</td>' +
-    '<td style="border:1px solid #000; width:17%; padding:4px;">Banyaknya yang<br>diberikan</td>' +
-    '<td style="border:1px solid #000; width:17%; padding:4px;">Banyaknya yang<br>diminta</td>' +
-    "</tr>" +
-    '<tr style="text-align:center; font-weight:600;">' +
-    '<td style="border:1px solid #000; padding:4px;">dengan angka</td>' +
-    '<td style="border:1px solid #000; padding:4px;">dengan angka</td>' +
-    "</tr>" +
-    "</thead>" +
-    "<tbody>" +
-    itemRows +
-    "</tbody>" +
-    "</table>" +
-    // ===== INFO BAWAH + KOTAK TUG =====
-    '<table style="width:100%; border-collapse:collapse; margin-top:2px;"><tr>' +
-    '<td style="width:70%; vertical-align:top; border:1px solid #000; border-top:none; padding:6px 8px;">' +
-    "VENDOR&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: " +
-    escapeHtml(data.vendor_name || "") +
-    "<br>" +
-    'NO. SPK&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: <span style="text-decoration:underline;">' +
-    escapeHtml(data.spk_number || "") +
-    "</span><br><br>" +
-    "JENIS PEKERJAAN&nbsp;: " +
-    escapeHtml(data.jenis_pekerjaan || "") +
-    "<br>" +
-    "IDPEL&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: " +
-    escapeHtml(data.idpel || "") +
-    "<br>" +
-    "NAMA PELANGGAN&nbsp;: " +
-    escapeHtml(data.customer_name || "") +
-    "<br>" +
-    "ALAMAT PELANGGAN&nbsp;: " +
-    escapeHtml(data.customer_address || "") +
-    "<br>" +
-    "DAYA&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: " +
-    escapeHtml(data.daya || "") +
-    "<br>" +
-    "ULP&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: " +
-    escapeHtml(data.ulp || "") +
-    "</td>" +
-    '<td style="width:30%; vertical-align:middle; border:1px solid #000; border-top:none; border-left:none; text-align:center; padding:10px;">' +
-    '<div style="border:2px solid #c00; color:#c00; font-weight:800; font-size:20px; padding:14px 6px; line-height:1.2;">' +
-    escapeHtml(data.tug_number || "") +
-    "</div>" +
-    "</td>" +
-    "</tr></table>" +
-    // ===== FOOTER TTD =====
-    '<table style="width:100%; margin-top:16px;"><tr>' +
-    "<td>Diterima tgl " +
-    escapeHtml(diterimaTglStr) +
-    "</td>" +
-    '<td style="text-align:right;">Malang, ' +
-    escapeHtml(malangTanggalStr) +
-    "</td>" +
-    "</tr></table>" +
-    '<p style="text-align:center; margin:8px 0;">Mengetahui,</p>' +
-    printTtdRow([
-      { label: "Penerima", value: data.penerima_name },
-      { label: "Security", value: data.security_name },
-      { label: "Yang Menyerahkan", value: data.menyerahkan_name },
-    ]) +
-    "</div>";
-
-  openPrintDoc(html);
+  window.open("printDPB.php?tug=" + encodeURIComponent(data.tug_number), "_blank");
 }
 function saveDPBpdf() {
   printDPB();
@@ -1652,9 +1485,11 @@ function loadK3() {
           ? "status-aktif"
           : data.status === "selesai"
             ? "status-selesai"
-            : "status-belum";
+            : data.status === "cancel"
+              ? "status-ditolak"
+              : "status-belum";
 
-      var isReadOnly = !window.IS_ADMIN || (data.status === "selesai");
+      var isReadOnly = !window.IS_ADMIN || (data.status === "selesai") || (data.status === "cancel");
 
       var adminReceivedForm = "";
       if (window.IS_ADMIN) {
@@ -1696,6 +1531,7 @@ function loadK3() {
         adminReceivedForm = isReadOnly
           ? '<div class="table-wrap"><table><thead><tr><th>#</th><th>Material</th><th>Norm</th><th>Satuan</th><th>Dikembalikan</th><th>Diterima</th><th>Kode</th><th>Harga Satuan</th></tr></thead><tbody>' + items + '</tbody></table></div>'
           : '<form method="POST" action="k3.php" style="margin-top:0.8rem;">' +
+            '<input type="hidden" name="csrf_token" value="' + window.CSRF_TOKEN + '">' +
             '<input type="hidden" name="k3_id" value="' + data.id + '">' +
             '<input type="hidden" name="tug_number" value="' + escapeHtml(data.tug_number) + '">' +
             '<div class="table-wrap"><table><thead><tr><th>#</th><th>Material</th><th>Norm</th><th>Satuan</th><th>Dikembalikan</th><th>Diterima</th><th>Kode</th><th>Harga Satuan</th></tr></thead><tbody>' + items + '</tbody></table></div>' +
@@ -1733,6 +1569,7 @@ function loadK3() {
         var disabledAttr = isReadOnly ? " disabled" : "";
         var saveBtn = isReadOnly ? "" : '<button type="submit" name="update_k3_details" class="btn-success" style="margin-top:0.4rem;">Simpan Detail Bon</button>';
         adminDetailsForm = '<form method="POST" action="k3.php" style="margin-top:0.8rem; background:#f7f9fc; padding:0.8rem; border-radius:14px;">' +
+          '<input type="hidden" name="csrf_token" value="' + window.CSRF_TOKEN + '">' +
           '<input type="hidden" name="k3_id" value="' +
           data.id +
           '">' +
@@ -1781,13 +1618,13 @@ function loadK3() {
           "</form>";
       }
 
-      var adminStatusForm = (window.IS_ADMIN && !isReadOnly)
-        ? '<div style="margin-top:0.8rem; display:flex; gap:0.6rem; align-items:flex-end; flex-wrap:wrap;">' +
-          '<a href="k3.php?delete_k3=' +
-          data.id +
-          '" onclick="return confirm(\'Yakin hapus?\')" class="btn-danger" style="padding:0.6rem 1.1rem; border-radius:30px; text-decoration:none; font-size:0.85rem;">Hapus</a>' +
-          "</div>"
-        : "";
+      var adminStatusForm = "";
+      if (window.IS_ADMIN && data.status !== "selesai" && data.status !== "cancel") {
+        adminStatusForm = '<div style="margin-top:0.8rem; display:flex; gap:0.6rem; align-items:flex-end; flex-wrap:wrap;">' +
+          '<a href="k3.php?delete_k3=' + data.id + '&csrf_token=' + window.CSRF_TOKEN + '" onclick="return confirm(\'Yakin hapus?\')" class="btn-danger" style="padding:0.6rem 1.1rem; border-radius:30px; text-decoration:none; font-size:0.85rem;">Hapus</a>' +
+          '<a href="k3.php?cancel_k3=' + data.id + '&csrf_token=' + window.CSRF_TOKEN + '" onclick="return confirm(\'Yakin batalkan (cancel) K3 ini?\')" class="btn-danger" style="padding:0.6rem 1.1rem; border-radius:30px; text-decoration:none; font-size:0.85rem; background-color:#ef4444; color:#fff;">Cancel K3</a>' +
+          "</div>";
+      }
 
       result.innerHTML =
         '<div class="card" style="margin-top:0;">' +
@@ -1875,12 +1712,17 @@ function printK3() {
   var kondisiList = kondisiOpts
     .map(function (k) {
       var isSel = k === data.kondisi_material;
+      var style = "";
+      if (isSel) {
+        var bgColor = "#ffff00"; // default yellow
+        if (k === "rusak") bgColor = "#ff4d4d";
+        else if (k === "baru") bgColor = "#00ff00"; // sisa proyek
+        else if (k === "garansi") bgColor = "#33ccff"; // klaim garansi
+        
+        style = "background:" + bgColor + "; color:#000; font-weight:bold; padding:2px 6px; border-radius:3px; -webkit-print-color-adjust:exact; print-color-adjust:exact; display:inline-block;";
+      }
       return (
-        '<div style="' +
-        (isSel ? "background:#ffe98a; font-weight:600;" : "") +
-        '">' +
-        kondisiLabels[k] +
-        "</div>"
+        '<div style="' + style + '">' + kondisiLabels[k] + "</div>"
       );
     })
     .join("");
@@ -1915,8 +1757,8 @@ function printK3() {
     '<th style="border:1px solid #000; padding:4px;">Nama Barang</th>' +
     '<th style="border:1px solid #000; padding:4px;">No. Normalisasi</th>' +
     '<th style="border:1px solid #000; padding:4px;">Satuan</th>' +
-    '<th style="border:1px solid #000; padding:4px;" colspan="2">Banyaknya Dikembalikan</th>' +
-    '<th style="border:1px solid #000; padding:4px;" colspan="2">Banyaknya Diterima</th>' +
+    '<th style="border:1px solid #000; padding:4px;">Banyaknya Dikembalikan</th>' +
+    '<th style="border:1px solid #000; padding:4px;">Banyaknya Diterima</th>' +
     "</tr></thead><tbody>" +
     itemRows +
     "</tbody></table>" +
@@ -1991,9 +1833,11 @@ function loadK7() {
           ? "status-aktif"
           : data.status === "selesai"
             ? "status-selesai"
-            : "status-belum";
+            : data.status === "cancel"
+              ? "status-ditolak"
+              : "status-belum";
 
-      var isReadOnly = !window.IS_ADMIN || (data.status === "selesai");
+      var isReadOnly = !window.IS_ADMIN || (data.status === "selesai") || (data.status === "cancel");
 
       var adminReceivedForm = "";
       if (window.IS_ADMIN) {
@@ -2025,6 +1869,7 @@ function loadK7() {
         adminReceivedForm = isReadOnly
           ? '<div class="table-wrap"><table><thead><tr><th>#</th><th>Material</th><th>Norm</th><th>Satuan</th><th>Diminta</th><th>Diterima</th></tr></thead><tbody>' + items + '</tbody></table></div>'
           : '<form method="POST" action="k7.php" style="margin-top:0.8rem;">' +
+            '<input type="hidden" name="csrf_token" value="' + window.CSRF_TOKEN + '">' +
             '<input type="hidden" name="k7_id" value="' + data.id + '">' +
             '<input type="hidden" name="tug_number" value="' + escapeHtml(data.tug_number) + '">' +
             '<div class="table-wrap"><table><thead><tr><th>#</th><th>Material</th><th>Norm</th><th>Satuan</th><th>Diminta</th><th>Diterima</th></tr></thead><tbody>' + items + '</tbody></table></div>' +
@@ -2058,6 +1903,7 @@ function loadK7() {
         var disabledAttr = isReadOnly ? " disabled" : "";
         var saveBtn = isReadOnly ? "" : '<button type="submit" name="update_k7_details" class="btn-success" style="margin-top:0.4rem;">Simpan Detail Bon</button>';
         adminDetailsFormK7 = '<form method="POST" action="k7.php" style="margin-top:0.8rem; background:#f7f9fc; padding:0.8rem; border-radius:14px;">' +
+          '<input type="hidden" name="csrf_token" value="' + window.CSRF_TOKEN + '">' +
           '<input type="hidden" name="k7_id" value="' +
           data.id +
           '">' +
@@ -2080,13 +1926,13 @@ function loadK7() {
           "</form>";
       }
 
-      var adminStatusForm = (window.IS_ADMIN && !isReadOnly)
-        ? '<div style="margin-top:0.8rem; display:flex; gap:0.6rem; align-items:flex-end; flex-wrap:wrap;">' +
-          '<a href="k7.php?delete_k7=' +
-          data.id +
-          '" onclick="return confirm(\'Yakin hapus?\')" class="btn-danger" style="padding:0.6rem 1.1rem; border-radius:30px; text-decoration:none; font-size:0.85rem;">Hapus</a>' +
-          "</div>"
-        : "";
+      var adminStatusForm = "";
+      if (window.IS_ADMIN && data.status !== "selesai" && data.status !== "cancel") {
+        adminStatusForm = '<div style="margin-top:0.8rem; display:flex; gap:0.6rem; align-items:flex-end; flex-wrap:wrap;">' +
+          '<a href="k7.php?delete_k7=' + data.id + '&csrf_token=' + window.CSRF_TOKEN + '" onclick="return confirm(\'Yakin hapus?\')" class="btn-danger" style="padding:0.6rem 1.1rem; border-radius:30px; text-decoration:none; font-size:0.85rem;">Hapus</a>' +
+          '<a href="k7.php?cancel_k7=' + data.id + '&csrf_token=' + window.CSRF_TOKEN + '" onclick="return confirm(\'Yakin batalkan (cancel) K7 ini?\')" class="btn-danger" style="padding:0.6rem 1.1rem; border-radius:30px; text-decoration:none; font-size:0.85rem; background-color:#ef4444; color:#fff;">Cancel K7</a>' +
+          "</div>";
+      }
 
       result.innerHTML =
         '<div class="card" style="margin-top:0;">' +
@@ -2195,8 +2041,8 @@ function printK7() {
     '<th style="border:1px solid #000; padding:4px;">Nama Barang</th>' +
     '<th style="border:1px solid #000; padding:4px;">No. Normalisasi</th>' +
     '<th style="border:1px solid #000; padding:4px;">Satuan</th>' +
-    '<th style="border:1px solid #000; padding:4px;" colspan="2">Banyaknya Diminta</th>' +
-    '<th style="border:1px solid #000; padding:4px;" colspan="2">Banyaknya Diterima</th>' +
+    '<th style="border:1px solid #000; padding:4px;">Banyaknya Diminta</th>' +
+    '<th style="border:1px solid #000; padding:4px;">Banyaknya Diterima</th>' +
     "</tr></thead><tbody>" +
     itemRows +
     "</tbody></table>" +
@@ -2245,7 +2091,8 @@ function escapeHtml(str) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function buildTtdBox(
@@ -2328,6 +2175,7 @@ function buildTtdBox(
     '<form method="POST" action="' +
     actionUrl +
     '">' +
+    '<input type="hidden" name="csrf_token" value="' + window.CSRF_TOKEN + '">' +
     '<input type="hidden" name="' +
     idField +
     '" value="' +
@@ -2527,6 +2375,36 @@ function exportMduToExcel() {
 // ---------- INISIALISASI HALAMAN ----------
 document.addEventListener("DOMContentLoaded", function () {
   ensureMaterialDatalists();
+
+  // Double submit prevention
+  function preventDoubleSubmit(formId) {
+    var form = document.getElementById(formId);
+    if (form) {
+      form.addEventListener("submit", function () {
+        var btn = form.querySelector('button[type="submit"], input[type="submit"], button:not([type])');
+        if (btn) {
+          setTimeout(function () {
+            btn.disabled = true;
+            btn.innerHTML = "Memproses...";
+            if (btn.tagName === "INPUT") {
+              btn.value = "Memproses...";
+            }
+          }, 0);
+        }
+      });
+    }
+  }
+
+  var formsToProtect = [
+    "addMaterialForm",
+    "materialEditForm",
+    "addVendorForm",
+    "vendorEditForm",
+    "dpbCreateForm",
+    "k3CreateForm",
+    "k7CreateForm"
+  ];
+  formsToProtect.forEach(preventDoubleSubmit);
 
   // pastikan required sesuai section yang aktif sejak awal load
   if (document.getElementById("registerFields")) {

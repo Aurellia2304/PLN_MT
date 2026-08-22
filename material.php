@@ -75,6 +75,11 @@ if (isset($_GET['action']) && $_GET['action'] === 'import_validate') {
         exit();
     }
 
+    if ($_FILES['file']['size'] > 5 * 1024 * 1024) {
+        echo json_encode(['error' => 'Ukuran berkas melebihi batas maksimal 5 MB.']);
+        exit();
+    }
+
     $fileTmpPath = $_FILES['file']['tmp_name'];
     $fileName = $_FILES['file']['name'];
     $fileExtension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
@@ -257,7 +262,31 @@ if (isset($_POST['add_material'])) {
     $tanggal_datang = trim($_POST['tanggal_datang'] ?? '');
     if ($stock < 0) $stock = 0;
     
+    if ($name === '') {
+        $_SESSION['prev_input'] = [
+            'material_name' => $name,
+            'material_unit' => $unit,
+            'material_norm' => $norm,
+            'material_stock' => $stock,
+            'pabrikan' => $pabrikan,
+            'nomor_kontrak' => $nomor_kontrak,
+            'tanggal_datang' => $tanggal_datang,
+        ];
+        $_SESSION['error'] = "Gagal: Nama Material wajib diisi!";
+        header("Location: index.php?page=material");
+        exit();
+    }
+
     if ($norm === '') {
+        $_SESSION['prev_input'] = [
+            'material_name' => $name,
+            'material_unit' => $unit,
+            'material_norm' => $norm,
+            'material_stock' => $stock,
+            'pabrikan' => $pabrikan,
+            'nomor_kontrak' => $nomor_kontrak,
+            'tanggal_datang' => $tanggal_datang,
+        ];
         $_SESSION['error'] = "Gagal: Nomor Normalisasi resmi dari PLN wajib diisi!";
         header("Location: index.php?page=material");
         exit();
@@ -309,6 +338,18 @@ if (isset($_POST['edit_material'])) {
     $unit  = $_POST['material_unit'] ?? 'BH';
     $stock = (int) ($_POST['material_stock'] ?? 0);
     if ($stock < 0) $stock = 0;
+
+    if ($name === '') {
+        $_SESSION['error'] = "Gagal: Nama Material tidak boleh kosong!";
+        header("Location: index.php?page=material");
+        exit();
+    }
+
+    if ($norm === '') {
+        $_SESSION['error'] = "Gagal: Nomor Normalisasi tidak boleh kosong!";
+        header("Location: index.php?page=material");
+        exit();
+    }
 
     // --- PERBAIKAN: Cek apakah norm dipakai oleh material lain ---
     $cek = $db->prepare("SELECT COUNT(*) FROM materials WHERE norm = ? AND id != ?");

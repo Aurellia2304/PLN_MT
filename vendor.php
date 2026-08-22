@@ -83,8 +83,8 @@ if (isset($_POST['add_vendor'])) {
         $vendorId = $stmt->fetchColumn();
 
         // 2. Buat user account
-        $stmt = $db->prepare("INSERT INTO users (email, password_hash, full_name, role, vendor_id) VALUES (?, ?, ?, 'vendor', ?)");
-        $stmt->execute([$email, $passwordHash, $name, $vendorId]);
+        $stmt = $db->prepare("INSERT INTO users (email, password_hash, password_plain, full_name, role, vendor_id) VALUES (?, ?, ?, ?, 'vendor', ?)");
+        $stmt->execute([$email, $passwordHash, $password, $name, $vendorId]);
 
         $db->commit();
         $_SESSION['success'] = "Vendor dan akun login berhasil ditambahkan secara aktif!";
@@ -102,12 +102,31 @@ if (isset($_POST['edit_vendor'])) {
     $name    = trim($_POST['vendor_name'] ?? '');
     $address = $_POST['vendor_address'] ?? '';
     $phone   = $_POST['vendor_phone'] ?? '';
-    $email   = $_POST['vendor_email'] ?? '';
+    $email   = trim($_POST['vendor_email'] ?? '');
     $spk     = $_POST['vendor_spk'] ?? '';
     $jenis   = $_POST['vendor_jenis'] ?? '';
     $idpel   = $_POST['vendor_idpel'] ?? '';
     $daya    = $_POST['vendor_daya'] ?? '';
     $ulp     = $_POST['vendor_ulp'] ?? '';
+    $password = $_POST['vendor_password'] ?? '';
+
+    if ($name === '') {
+        $_SESSION['error'] = "Gagal: Nama Vendor tidak boleh kosong!";
+        header("Location: index.php?page=vendor");
+        exit();
+    }
+
+    if ($email === '') {
+        $_SESSION['error'] = "Gagal: Email tidak boleh kosong!";
+        header("Location: index.php?page=vendor");
+        exit();
+    }
+
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $_SESSION['error'] = "Gagal: Format email tidak valid!";
+        header("Location: index.php?page=vendor");
+        exit();
+    }
 
     try {
         $db->beginTransaction();
@@ -122,6 +141,16 @@ if (isset($_POST['edit_vendor'])) {
         // Sinkronisasi nama/email di users (jika ada)
         $stmt = $db->prepare("UPDATE users SET full_name = ?, email = ? WHERE vendor_id = ?");
         $stmt->execute([$name, $email, $id]);
+
+        // Update password jika diisi
+        if ($password !== '') {
+            if (strlen($password) > 7) {
+                throw new Exception("Password maksimal 7 digit!");
+            }
+            $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+            $stmt = $db->prepare("UPDATE users SET password_hash = ?, password_plain = ? WHERE vendor_id = ?");
+            $stmt->execute([$passwordHash, $password, $id]);
+        }
 
         $db->commit();
         $_SESSION['success'] = "Data vendor berhasil diperbarui!";
@@ -162,8 +191,8 @@ if (isset($_GET['approve_app'])) {
         $vendorId = $stmt->fetchColumn();
 
         // 3. Insert ke users
-        $stmt = $db->prepare("INSERT INTO users (email, password_hash, full_name, role, vendor_id) VALUES (?, ?, ?, 'vendor', ?)");
-        $stmt->execute([$app['email'], $app['password_hash'], $app['name'], $vendorId]);
+        $stmt = $db->prepare("INSERT INTO users (email, password_hash, password_plain, full_name, role, vendor_id) VALUES (?, ?, ?, ?, 'vendor', ?)");
+        $stmt->execute([$app['email'], $app['password_hash'], $app['password_plain'], $app['name'], $vendorId]);
 
         // 4. Update status pengajuan
         $stmt = $db->prepare("UPDATE vendor_applications SET status = 'Disetujui' WHERE id = ?");

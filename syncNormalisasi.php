@@ -19,6 +19,23 @@ if (!isLoggedIn() || !isAdmin()) {
     die("Hanya admin gudang PLN yang dapat menjalankan sinkronisasi ini.");
 }
 
+$csvPath = __DIR__ . '/data/normalisasi.csv';
+$csvExists = file_exists($csvPath) && is_readable($csvPath);
+$csvEmpty = $csvExists ? (filesize($csvPath) === 0) : true;
+
+$csvError = null;
+$normalisasiMap = [];
+if (!$csvExists) {
+    $csvError = "File data/normalisasi.csv tidak ditemukan di server. Harap unggah berkas terlebih dahulu.";
+} elseif ($csvEmpty) {
+    $csvError = "File data/normalisasi.csv kosong.";
+} else {
+    $normalisasiMap = loadNormalisasiMap();
+    if (empty($normalisasiMap)) {
+        $csvError = "Data di data/normalisasi.csv tidak valid atau kosong setelah di-parse.";
+    }
+}
+
 $confirmed = isset($_GET['confirm']) && $_GET['confirm'] === '1';
 
 $updated = [];
@@ -27,7 +44,9 @@ $skippedConflict = [];
 $totalMaterials = 0;
 
 if ($confirmed) {
-    $normalisasiMap = loadNormalisasiMap(); // ['nama lowercase' => ['name'=>.., 'norm'=>..]]
+    if ($csvError !== null) {
+        die("Gagal menjalankan sinkronisasi: " . htmlspecialchars($csvError));
+    }
 
     try {
         $db->beginTransaction();
@@ -86,6 +105,7 @@ h2{color:#0b2b4a;}
 ul{line-height:1.6;}
 a.back{display:inline-block;margin-top:1.5rem;text-decoration:none;color:#14828a;font-weight:600;}
 .confirm-box{background:#fdf1e0;border:1px solid #f0d9a6;border-radius:12px;padding:1.2rem 1.4rem;color:#a35b00;}
+.error-box{background:#fde8e8;border:1px solid #f8b4b4;border-radius:12px;padding:1.2rem 1.4rem;color:#d64545;margin-bottom:1.5rem;}
 .confirm-btn{display:inline-block;margin-top:1rem;background:#d64545;color:#fff;text-decoration:none;font-weight:700;padding:0.7rem 1.4rem;border-radius:30px;}
 .confirm-btn:hover{filter:brightness(1.07);}
 </style>
@@ -95,17 +115,24 @@ a.back{display:inline-block;margin-top:1.5rem;text-decoration:none;color:#14828a
 <?php if (!$confirmed): ?>
 
     <h2>Sinkronisasi Ulang Kode Normalisasi</h2>
-    <div class="confirm-box">
-        <strong>Perhatian:</strong> proses ini akan <strong>menghapus semua kode normalisasi lama</strong>
-        pada seluruh material, lalu mengisinya kembali dari data terbaru di
-        <code>data/normalisasi.csv</code> (dicocokkan berdasarkan nama material).
-        Material yang namanya tidak ditemukan di data terbaru akan kehilangan kode
-        normalisasinya (kosong) sampai diisi manual.
-        <br><br>
-        Pastikan file <code>data/normalisasi.csv</code> sudah diperbarui dengan data Excel yang benar sebelum melanjutkan.
-        <br>
-        <a class="confirm-btn" href="?confirm=1">Ya, Hapus &amp; Sinkronkan Ulang Sekarang</a>
-    </div>
+    <?php if ($csvError !== null): ?>
+        <div class="error-box">
+            <strong>Gagal Memulai Sinkronisasi:</strong><br>
+            <?= htmlspecialchars($csvError) ?>
+        </div>
+    <?php else: ?>
+        <div class="confirm-box">
+            <strong>Perhatian:</strong> proses ini akan <strong>menghapus semua kode normalisasi lama</strong>
+            pada seluruh material, lalu mengisinya kembali dari data terbaru di
+            <code>data/normalisasi.csv</code> (dicocokkan berdasarkan nama material).
+            Material yang namanya tidak ditemukan di data terbaru akan kehilangan kode
+            normalisasinya (kosong) sampai diisi manual.
+            <br><br>
+            Pastikan file <code>data/normalisasi.csv</code> sudah diperbarui dengan data Excel yang benar sebelum melanjutkan.
+            <br>
+            <a class="confirm-btn" href="?confirm=1">Ya, Hapus &amp; Sinkronkan Ulang Sekarang</a>
+        </div>
+    <?php endif; ?>
 
 <?php else: ?>
 

@@ -85,17 +85,27 @@ $sheet->getStyle('A4:H4')->getFont()->setBold(true)->setColor(new \PhpOffice\Php
 $sheet->getStyle('A4:H4')->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('0B2B4A');
 $sheet->getStyle('A4:H4')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
+function escapeFormula($val) {
+    if ($val === null || $val === '') return '';
+    $valStr = (string)$val;
+    $firstChar = substr($valStr, 0, 1);
+    if (in_array($firstChar, ['=', '+', '-', '@'], true)) {
+        return "'" . $valStr;
+    }
+    return $valStr;
+}
+
 // Data rows
 $rowIdx = 5;
 $no = 1;
 foreach ($data as $row) {
     $sheet->setCellValue('A' . $rowIdx, $no++);
-    $sheet->setCellValue('B' . $rowIdx, $row['material_name']);
-    $sheet->setCellValue('C' . $rowIdx, $row['material_norm']);
-    $sheet->setCellValue('D' . $rowIdx, $row['material_unit']);
+    $sheet->setCellValue('B' . $rowIdx, escapeFormula($row['material_name']));
+    $sheet->setCellValue('C' . $rowIdx, escapeFormula($row['material_norm']));
+    $sheet->setCellValue('D' . $rowIdx, escapeFormula($row['material_unit']));
     $sheet->setCellValue('E' . $rowIdx, $row['quantity']);
-    $sheet->setCellValue('F' . $rowIdx, $row['pabrikan'] ?: '-');
-    $sheet->setCellValue('G' . $rowIdx, $row['nomor_kontrak'] ?: '-');
+    $sheet->setCellValue('F' . $rowIdx, escapeFormula($row['pabrikan'] ?: '-'));
+    $sheet->setCellValue('G' . $rowIdx, escapeFormula($row['nomor_kontrak'] ?: '-'));
     $sheet->setCellValue('H' . $rowIdx, $row['tanggal_datang'] ? date('d-m-Y', strtotime($row['tanggal_datang'])) : '-');
 
     // Alignments
