@@ -118,8 +118,8 @@ if (isset($_POST['register'])) {
         }
 
         // Simpan ke pengajuan vendor
-        $stmt = $db->prepare("INSERT INTO vendor_applications (name, address, phone, email, password_hash, password_plain, status) VALUES (?, ?, ?, ?, ?, ?, 'Menunggu Persetujuan')");
-        $stmt->execute([$vendorName, $vendorAddr, $vendorPhone, $email, $passwordHash, $passwordRaw]);
+        $stmt = $db->prepare("INSERT INTO vendor_applications (name, address, phone, email, password_hash, status) VALUES (?, ?, ?, ?, ?, 'Menunggu Persetujuan')");
+        $stmt->execute([$vendorName, $vendorAddr, $vendorPhone, $email, $passwordHash]);
 
         $_SESSION['success'] = "Pendaftaran PT \"$vendorName\" berhasil dikirim! Menunggu persetujuan Admin.";
         $_SESSION['open_modal'] = 'login';

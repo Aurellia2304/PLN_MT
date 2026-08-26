@@ -903,6 +903,7 @@ if ($is_admin) {
                 SUM(di.quantity_requested - di.quantity_received) AS total_pending
             FROM dpb_items di
             JOIN dpb_transactions d ON di.dpb_id = d.id
+            JOIN vendors v ON d.vendor_id = v.id
             LEFT JOIN materials m ON di.material_id = m.id
             WHERE $condStr2
             GROUP BY m.name
@@ -1095,7 +1096,7 @@ if ($page === 'riwayat') {
         $paged_applications = array_slice($all_applications, ($appPage - 1) * $limit, $limit);
 
         // 2. Daftar Vendor List
-        $stmt = $db->query("SELECT v.*, u.password_plain FROM vendors v LEFT JOIN users u ON u.vendor_id = v.id ORDER BY v.name ASC");
+        $stmt = $db->query("SELECT * FROM vendors ORDER BY name ASC");
         $all_vendors = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         // Pagination Vendor terdaftar
@@ -1629,7 +1630,7 @@ if ($page === 'riwayat') {
                     <!-- Form Tambah Vendor (Hidden by default, toggled via JS) -->
                     <div id="addVendorFormBlock" class="card" style="display: none; border: 1px solid #dbe4ec; margin-bottom: 24px; background: #f8fafc; padding: 20px; border-radius: 16px;">
                         <h4 style="color:#0b2b4a; margin-top:0; margin-bottom:1rem;"><i class="fas fa-plus-circle"></i> Form Tambah Vendor Baru</h4>
-                        <form method="POST" action="vendor.php" id="addVendorForm">
+                        <form method="POST" action="vendor.php" id="addVendorForm" autocomplete="off">
                             <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
                             <div class="flex-row">
                                 <div class="form-group">
@@ -1652,7 +1653,7 @@ if ($page === 'riwayat') {
                                 </div>
                                 <div class="form-group">
                                     <label>Password (maks. 7 digit)</label>
-                                    <input type="password" name="vendor_password" placeholder="******" maxlength="7" required>
+                                    <input type="password" name="vendor_password" placeholder="******" maxlength="7" autocomplete="new-password" required>
                                 </div>
                             </div>
                             <div style="margin-top:1.2rem; display: flex; gap: 8px;">
@@ -1794,7 +1795,6 @@ if ($page === 'riwayat') {
                 document.getElementById('vDetAddress').textContent = vendor.address || '-';
                 document.getElementById('vDetPhone').textContent = vendor.phone || '-';
                 document.getElementById('vDetEmail').textContent = vendor.email || '-';
-                document.getElementById('vDetPassword').textContent = vendor.password_plain || 'Belum diatur / hashed';
                 
                 var statusSpan = '';
                 if ((vendor.status || 'aktif') === 'aktif') {
@@ -1911,7 +1911,7 @@ if ($page === 'riwayat') {
 
                 <div class="card" id="inputMaterialFormWrap" style="display: <?= $has_prev ? 'block' : 'none' ?>; margin-bottom: 24px;">
                     <h3><i class="fas fa-cube"></i> Input Material Baru</h3>
-                    <form method="POST" action="material.php" id="addMaterialForm" style="margin-bottom: 1.5rem;">
+                    <form method="POST" action="material.php" id="addMaterialForm" style="margin-bottom: 1.5rem;" autocomplete="off">
                         <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
                         <div class="form-group">
                             <label>Nama Material</label>
@@ -2051,7 +2051,7 @@ if ($page === 'riwayat') {
                             </a>
                         </div>
 
-                        <form method="POST" action="Dpb.php">
+                        <form method="POST" action="Dpb.php" autocomplete="off">
                             <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
                             <!-- Hidden indicator to trigger the correct post handler -->
                             <input type="hidden" name="create_manual_sj" value="1">
@@ -2539,7 +2539,7 @@ if ($page === 'riwayat') {
                             <div class="card" style="margin-top:1.5rem;">
                                 <h3><i class="fas fa-file-signature"></i> Ajukan Permintaan Material Baru (DPB)</h3>
                         
-                                <form method="POST" action="Dpb.php" id="dpbCreateForm">
+                                <form method="POST" action="Dpb.php" id="dpbCreateForm" autocomplete="off">
                                     <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
                                     <div class="flex-row">
                                         <div class="form-group">
@@ -3918,7 +3918,7 @@ if ($page === 'riwayat') {
     <div class="modal-content" style="max-width: 600px;">
         <span class="close" onclick="closeVendorEditModal()">&times;</span>
         <h2 style="color:#0b2b4a;"><i class="fas fa-edit"></i> Edit Data &amp; Defaults Vendor</h2>
-        <form method="POST" action="vendor.php" id="vendorEditForm" style="margin-top: 1rem;">
+        <form method="POST" action="vendor.php" id="vendorEditForm" style="margin-top: 1rem;" autocomplete="off">
             <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
             <input type="hidden" name="vendor_id" id="editVendorId">
             <div class="flex-row">
@@ -3942,7 +3942,7 @@ if ($page === 'riwayat') {
                 </div>
                 <div class="form-group">
                     <label>Password (maks. 7 digit, kosongkan jika tidak diubah)</label>
-                    <input type="password" name="vendor_password" placeholder="******" maxlength="7">
+                    <input type="password" name="vendor_password" placeholder="******" maxlength="7" autocomplete="new-password">
                 </div>
             </div>
             <div style="margin-top:1.5rem; display: flex; gap: 8px; justify-content: flex-end;">

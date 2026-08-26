@@ -83,8 +83,8 @@ if (isset($_POST['add_vendor'])) {
         $vendorId = $stmt->fetchColumn();
 
         // 2. Buat user account
-        $stmt = $db->prepare("INSERT INTO users (email, password_hash, password_plain, full_name, role, vendor_id) VALUES (?, ?, ?, ?, 'vendor', ?)");
-        $stmt->execute([$email, $passwordHash, $password, $name, $vendorId]);
+        $stmt = $db->prepare("INSERT INTO users (email, password_hash, full_name, role, vendor_id) VALUES (?, ?, ?, 'vendor', ?)");
+        $stmt->execute([$email, $passwordHash, $name, $vendorId]);
 
         $db->commit();
         $_SESSION['success'] = "Vendor dan akun login berhasil ditambahkan secara aktif!";
@@ -148,8 +148,8 @@ if (isset($_POST['edit_vendor'])) {
                 throw new Exception("Password maksimal 7 digit!");
             }
             $passwordHash = password_hash($password, PASSWORD_DEFAULT);
-            $stmt = $db->prepare("UPDATE users SET password_hash = ?, password_plain = ? WHERE vendor_id = ?");
-            $stmt->execute([$passwordHash, $password, $id]);
+            $stmt = $db->prepare("UPDATE users SET password_hash = ? WHERE vendor_id = ?");
+            $stmt->execute([$passwordHash, $id]);
         }
 
         $db->commit();
@@ -191,8 +191,8 @@ if (isset($_GET['approve_app'])) {
         $vendorId = $stmt->fetchColumn();
 
         // 3. Insert ke users
-        $stmt = $db->prepare("INSERT INTO users (email, password_hash, password_plain, full_name, role, vendor_id) VALUES (?, ?, ?, ?, 'vendor', ?)");
-        $stmt->execute([$app['email'], $app['password_hash'], $app['password_plain'], $app['name'], $vendorId]);
+        $stmt = $db->prepare("INSERT INTO users (email, password_hash, full_name, role, vendor_id) VALUES (?, ?, ?, 'vendor', ?)");
+        $stmt->execute([$app['email'], $app['password_hash'], $app['name'], $vendorId]);
 
         // 4. Update status pengajuan
         $stmt = $db->prepare("UPDATE vendor_applications SET status = 'Disetujui' WHERE id = ?");
