@@ -297,6 +297,9 @@ if (isset($_POST['add_vendor']) || isset($_POST['edit_vendor']) || (isset($_GET[
 if (isset($_POST['add_material']) || isset($_POST['edit_material']) || (isset($_GET['delete']) && strpos($_SERVER['REQUEST_URI'], 'page=material') !== false)) {
     include 'material.php';
 }
+if (isset($_POST['action_return'])) {
+    include 'return_action.php';
+}
 if (isset($_POST['login']) || isset($_POST['register'])) {
     include 'auth.php';
 }
@@ -1298,6 +1301,7 @@ if ($page === 'riwayat') {
             <a href="?page=material" class="adm-nav-item <?= $page === 'material' ? 'active' : '' ?>">
                 <i class="fas fa-boxes"></i> <span>Material</span>
             </a>
+
             <?php endif; ?>
             <a href="?page=dpb" class="adm-nav-item <?= $page === 'dpb'     ? 'active' : '' ?>">
                 <i class="fas fa-clipboard-list"></i> <span>DPB</span>
@@ -1313,6 +1317,9 @@ if ($page === 'riwayat') {
                 <i class="fas fa-file-invoice"></i> <span>Surat Jalan</span>
             </a>
             <?php endif; ?>
+            <a href="?page=return" class="adm-nav-item <?= $page === 'return' ? 'active' : '' ?>">
+                <i class="fas fa-qrcode"></i> <span>Return Material</span>
+            </a>
             <?php if ($is_vendor): ?>
             <a href="#" onclick="showFaq()" class="adm-nav-item">
                 <i class="fas fa-question-circle"></i> <span>FAQ</span>
@@ -3495,6 +3502,8 @@ if ($page === 'riwayat') {
                 </div>
                 <?php endif; ?>
             </div>
+        <?php elseif ($page === 'return'): ?>
+            <?php include 'return_admin.php'; ?>
         <?php elseif ($page === 'material_pending'): ?>
             <div id="materialPendingSection">
                 <div class="card" style="margin-bottom: 24px;">
